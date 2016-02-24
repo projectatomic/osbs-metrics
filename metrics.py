@@ -53,7 +53,7 @@ class BuildLog(object):
             return
 
         self.data = {
-            'upload_size_mb': '-',
+            'upload_size_mb': 'nan',
         }
         size_re = re.compile(r' - dockpulp - INFO - uploading a (.*)M image')
         plugin_re = re.compile(r'(.*),[0-9]+ - atomic_reactor.plugin - DEBUG - running plugin \'(.*)\'')
@@ -118,14 +118,14 @@ class Builds(object):
                 start = rfc3339_time(startTimestamp)
                 name = build['metadata']['name']
                 pending = start - creation
-                plugins = {name: '-'
+                plugins = {name: 'nan'
                            for name in ['pull_base_image',
                                         'distgit_fetch_artefacts',
                                         'squash',
                                         'pulp_push']}
                 if pending < 0:
                     which = 'archived'
-                    pending = upload_size_mb = '-'
+                    pending = upload_size_mb = 'nan'
                 else:
                     which = 'current'
                     logfile = "{name}.log".format(name=name)
@@ -140,7 +140,7 @@ class Builds(object):
 
                     build_log = BuildLog(logfile)
                     log_data = build_log.data
-                    upload_size_mb = log_data.get('upload_size_mb', '-')
+                    upload_size_mb = log_data.get('upload_size_mb', 'nan')
                     for plugin in plugins.keys():
                         try:
                             plugins[plugin] = log_data[plugin]

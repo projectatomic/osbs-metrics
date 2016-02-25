@@ -8,16 +8,17 @@ import sys
 from time import ctime, gmtime, strftime, strptime
 
 
-FIELDS = ['completion',
-          'throughput',
-          'pending',
-          'running',
-          'pull_base_image',
-          'distgit_fetch_artefacts',
-          'squash',
-          'pulp_push',
-          'upload_size_mb']
-Metrics = namedtuple('Metrics', FIELDS)
+FIELDS = [('completion', 'completion'),
+          ('throughput', 'throughput'),
+          ('pending', 'pending'),
+          ('running', 'running'),
+          ('pull_base_image', 'plugin_pull_base_image'),
+          ('distgit_fetch_artefacts', 'plugin_distgit_fetch_artefacts'),
+          ('dockerfile_content', 'docker_build'),
+          ('squash', 'plugin_squash'),
+          ('pulp_push', 'plugin_pulp_push'),
+          ('upload_size_mb', 'upload_size_mb')]
+Metrics = namedtuple('Metrics', [field[0] for field in FIELDS])
 
 
 def rfc3339_time(rfc3339):
@@ -121,6 +122,7 @@ class Builds(object):
                 plugins = {name: 'nan'
                            for name in ['pull_base_image',
                                         'distgit_fetch_artefacts',
+                                        'dockerfile_content',
                                         'squash',
                                         'pulp_push']}
                 if pending < 0:
@@ -159,7 +161,7 @@ class Builds(object):
 
         for which, data in results.items():
             with open("metrics-{which}.csv".format(which=which), "w") as fp:
-                fp.write(",".join(FIELDS) + '\n')
+                fp.write(",".join([field[1] for field in FIELDS]) + '\n')
                 for result in data:
                     fp.write(",".join([str(m) for m in result]) + '\n')
 

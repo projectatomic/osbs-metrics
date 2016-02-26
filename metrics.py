@@ -37,11 +37,33 @@ class ThroughputModel(object):
             self.start_time = timestamp
 
         self.builds.append(timestamp)
-        while self.builds[-1] - self.builds[0] > self.window:
+        while self.builds[-1] - self.builds[0] >= self.window:
             del self.builds[0]
 
         return len(self.builds)
-        
+
+
+class ConcurrentModel(object):
+    def __init__(self):
+        self.start_finish = []
+        self.finish_times = []
+
+    def append(self, start, finish):
+        self.start_finish.append((start, finish))
+
+    def get_nbuilds(self):
+        for start, finish in self.start_finish:
+            while self.finish_times:
+                if start < self.finish_times[0]:
+                    break
+
+                yield (self.finish_times[0], len(self.finish_times) - 1)
+                del self.finish_times[0]
+
+            self.finish_times.append(finish)
+            self.finish_times.sort()
+            yield (start, len(self.finish_times))
+
 
 class BuildLog(object):
     def __init__(self, logfile):
@@ -92,6 +114,7 @@ class Builds(object):
         results = {
             'archived': [],
             'current': [],
+            'concurrent': [],
         }
 
         # Sort by time created
@@ -109,14 +132,17 @@ class Builds(object):
 
             state = build['status']['phase']
             states[state] += 1
+            startTimestamp = build['status'].get('startTimestamp')
+            if startTimestamp is not None:
+                start = rfc3339_time(startTimestamp)
+
             if state == 'Complete':
+                assert startTimestamp is not None
                 timestamp = strftime("%Y-%m-%d %H:%M:%S", gmtime(completion))
                 tput = tputmodel.append(completion)
 
                 creationTimestamp = build['metadata']['creationTimestamp']
                 creation = rfc3339_time(creationTimestamp)
-                startTimestamp = build['status']['startTimestamp']
-                start = rfc3339_time(startTimestamp)
                 name = build['metadata']['name']
                 pending = start - creation
                 plugins = {name: 'nan'
@@ -159,11 +185,34 @@ class Builds(object):
 
             builds_examined += 1
 
+        # Now sort by time started
+        builds = [build for build in self.builds
+                  if ('startTimestamp' in build['status'] and
+                      'completionTimestamp' in build['status'])]
+        builds.sort(key=lambda x: x['status']['startTimestamp'])
+        cmodel = ConcurrentModel()
+        for build in builds:
+            startTimestamp = build['status']['startTimestamp']
+            start = rfc3339_time(startTimestamp)
+            completionTimestamp = build['status']['completionTimestamp']
+            completion = rfc3339_time(completionTimestamp)
+            cmodel.append(start, completion)
+
+        results['concurrent'].extend(
+                [(strftime("%Y-%m-%d %H:%M:%S", gmtime(timestamp)), nbuilds)
+                 for (timestamp, nbuilds) in cmodel.get_nbuilds()])
+
         for which, data in results.items():
-            with open("metrics-{which}.csv".format(which=which), "w") as fp:
-                fp.write(",".join([field[1] for field in FIELDS]) + '\n')
-                for result in data:
-                    fp.write(",".join([str(m) for m in result]) + '\n')
+            if which == 'concurrent':
+                with open("metrics-concurrent.csv", "w") as fp:
+                    fp.write("timestamp,nbuilds\n")
+                    for result in data:
+                        fp.write(",".join([str(m) for m in result]) + '\n')
+            else:
+                with open("metrics-{which}.csv".format(which=which), "w") as fp:
+                    fp.write(",".join([field[1] for field in FIELDS]) + '\n')
+                    for result in data:
+                        fp.write(",".join([str(m) for m in result]) + '\n')
 
         return {
             'builds examined': builds_examined,

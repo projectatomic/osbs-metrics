@@ -1,5 +1,5 @@
 from bokeh.plotting import *
-from bokeh.charts import Histogram, TimeSeries
+from bokeh.charts import Histogram, TimeSeries, BoxPlot
 from bokeh.models import Span, NumeralTickFormatter, AdaptiveTicker, Range1d
 from collections import namedtuple
 import datetime
@@ -83,6 +83,15 @@ def run(metrics_file, concurrent_file):
                  line_color='red', line_dash='dashed', line_width=3)
     s3.renderers.extend([start])
     charts.append(s3)
+
+    merged = metrics.merge(concurrent,
+                           left_on=['completion'], right_on=['timestamp'],
+                           sort=False)
+    sc = BoxPlot(merged, values='plugin_squash', label='nbuilds',
+                 width=800, height=350, title='squash time vs concurrent builds')
+    sc._yaxis.formatter = NumeralTickFormatter(format="00:00:00")
+    sc._yaxis.ticker = AdaptiveTicker(mantissas=[1,3,6])
+    charts.append(sc)
 
     valid = ~np.isnan(metrics['upload_size_mb'])
     hsize = MyHistogram(metrics['upload_size_mb'][valid], bins=10,

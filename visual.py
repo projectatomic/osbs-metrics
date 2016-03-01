@@ -11,7 +11,7 @@ import sys
 def MyHistogram(data, bins, **kwargs):
     # Work around bokeh.charts.Histogram bug
     p = figure(**kwargs)
-    hist, edges = np.histogram(data, density=True, bins=bins)
+    hist, edges = np.histogram(data, density=False, bins=bins)
     p.quad(top=hist, bottom=0, left=edges[:-1], right=edges[1:],
            color='#dd2222', line_color='black')
     return p
@@ -28,7 +28,6 @@ def run(metrics_file, concurrent_file):
 
     window_size = 30
     window = np.ones(window_size)/float(window_size)
-    throughput_avg = np.convolve(metrics['throughput'], window, 'same')
 
     output_file(metrics_file.replace('.csv', '.html'))
     charts = []
@@ -36,13 +35,11 @@ def run(metrics_file, concurrent_file):
     # hourly throughput
     s1 = figure(width=800, height=350, x_axis_type='datetime',
                 title='hourly throughput')
+    s1.legend.orientation = 'bottom_left'
     s1.circle(metrics['completion'],
               metrics['throughput'],
               color='blue', alpha=0.2, size=12,
               legend='hourly throughput')
-    s1.line(metrics['completion'],
-            throughput_avg,
-            color='navy', legend='throughput (avg)')
     peak = Span(location=metrics['throughput'].max(), dimension='width',
                 line_color='green', line_dash='dashed', line_width=3)
     s1.renderers.extend([peak])
@@ -74,21 +71,20 @@ def run(metrics_file, concurrent_file):
     # concurrent builds
     s3 = figure(width=800, height=350, title='concurrent builds',
                 x_axis_type='datetime')
-    s3.line(concurrent['timestamp'],
-            concurrent['nbuilds'],
+    start = metrics['completion'][0]
+    since_start = concurrent['timestamp'] > start
+    s3.line(concurrent[since_start]['timestamp'],
+            concurrent[since_start]['nbuilds'],
             line_color='green',
             line_join='bevel')
-    start = Span(location=metrics['completion'][0].timestamp() * 1000,
-                 dimension='height', name='infra move',
-                 line_color='red', line_dash='dashed', line_width=3)
-    s3.renderers.extend([start])
     charts.append(s3)
 
     merged = metrics.merge(concurrent,
                            left_on=['completion'], right_on=['timestamp'],
                            sort=False)
     sc = BoxPlot(merged, values='plugin_squash', label='nbuilds',
-                 width=800, height=350, title='squash time vs concurrent builds')
+                 width=800, height=350,
+                 title='squash time vs (other) concurrent builds')
     sc._yaxis.formatter = NumeralTickFormatter(format="00:00:00")
     sc._yaxis.ticker = AdaptiveTicker(mantissas=[1,3,6])
     charts.append(sc)

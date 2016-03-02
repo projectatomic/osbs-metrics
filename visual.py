@@ -99,7 +99,7 @@ def run(metrics_file, concurrent_file, postfeb26):
             (these_metrics['running'], None,
              'Total build time' + when),
 
-            (these_metrics['plugin_pull_base_image'], 6,
+            (these_metrics['plugin_pull_base_image'], 15,
              'Time pulling base image' + when),
 
             (these_metrics['plugin_distgit_fetch_artefacts'], 6,

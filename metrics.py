@@ -78,27 +78,27 @@ class BuildLog(object):
         self.data = {
             'upload_size_mb': 'nan',
         }
+        name_re = re.compile(r'selflink.: u./oapi/v1/namespaces/default/builds/([^,]*).,')
         size_re = re.compile(r' - dockpulp - INFO - uploading a (.*)M image')
-        plugin_re = re.compile(r'(.*),[0-9]+ - atomic_reactor.plugin - DEBUG - running plugin \'(.*)\'')
+        plugin_re = re.compile(r'([0-9 :-]*),[0-9]+ - atomic_reactor.plugin - DEBUG - running plugin \'(.*)\'')
         with open(self.logfile) as lf:
             log = lf.read()
+            name = name_re.search(log)
+            if name:
+                self.data['name'] = name.groups()[0]
+
             size = size_re.search(log)
             if size:
                 self.data['upload_size_mb'] = size.groups()[0]
 
             last_plugin = None
-            while True:
-                plugin = plugin_re.search(log)
-                if plugin is None:
-                    break
-
-                timestamp, plugin_name = plugin.groups()
+            plugins = plugin_re.findall(log)
+            for timestamp, plugin_name in plugins:
                 t = timegm(strptime(timestamp, "%Y-%m-%d %H:%M:%S"))
                 if last_plugin is not None:
                     self.data[last_plugin[1]] = t - last_plugin[0]
 
                 last_plugin = (t, plugin_name)
-                log = log[plugin.span()[1]:]
 
 
 class Builds(object):

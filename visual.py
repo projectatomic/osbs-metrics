@@ -10,6 +10,7 @@ import sys
 
 def MyHistogram(data, bins, **kwargs):
     # Work around bokeh.charts.Histogram bug
+    # https://github.com/bokeh/bokeh/issues/3875
     p = figure(**kwargs)
     hist, edges = np.histogram(data, density=False, bins=bins)
     p.quad(top=hist, bottom=0, left=edges[:-1], right=edges[1:],

@@ -27,11 +27,11 @@ def run(metrics_file, concurrent_file, postfeb26):
     network_fix = metrics['completion'] > datetime.datetime(2016, 2, 26,
                                                             20, 0)
     if postfeb26:
-        fname = '-to-feb26'
+        fname = '-since-feb26'
         when = ' (since Feb 26)'
         which = network_fix
     else:
-        fname = '-since-feb26'
+        fname = '-to-feb26'
         when = ' (to Feb 26)'
         which = ~network_fix
 

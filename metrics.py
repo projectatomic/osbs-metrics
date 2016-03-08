@@ -135,6 +135,7 @@ class Builds(object):
             startTimestamp = build['status'].get('startTimestamp')
             if startTimestamp is not None:
                 start = rfc3339_time(startTimestamp)
+            duration = build['metadata'].get('duration', 0) / 1000000000
 
             if state == 'Complete':
                 assert startTimestamp is not None
@@ -178,7 +179,7 @@ class Builds(object):
                 metrics = Metrics(completion=timestamp,
                                   throughput=tput,
                                   pending=pending,
-                                  running=completion - start,
+                                  running=duration,
                                   upload_size_mb=upload_size_mb,
                                   **plugins)
                 results[which].append(metrics)

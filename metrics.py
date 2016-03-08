@@ -9,6 +9,7 @@ from time import ctime, gmtime, strftime, strptime
 
 
 FIELDS = [('completion', 'completion'),
+          ('state', 'state'),
           ('throughput', 'throughput'),
           ('pending', 'pending'),
           ('running', 'running'),
@@ -16,6 +17,7 @@ FIELDS = [('completion', 'completion'),
           ('distgit_fetch_artefacts', 'plugin_distgit_fetch_artefacts'),
           ('dockerfile_content', 'docker_build'),
           ('squash', 'plugin_squash'),
+          ('compress', 'plugin_compress'),
           ('pulp_push', 'plugin_pulp_push'),
           ('upload_size_mb', 'upload_size_mb')]
 Metrics = namedtuple('Metrics', [field[0] for field in FIELDS])
@@ -65,6 +67,10 @@ class ConcurrentModel(object):
             yield (start, len(self.finish_times))
 
 
+class MissingLog(Exception):
+    pass
+
+
 class BuildLog(object):
     def __init__(self, logfile):
         self.logfile = logfile
@@ -75,6 +81,14 @@ class BuildLog(object):
         if self.data is not None:
             return
 
+        cache = self.logfile + '.cache'
+        try:
+            with open(cache) as cf:
+                self.data = json.load(cf)
+                return
+        except (IOError, ValueError):
+            pass
+
         self.data = {
             'upload_size_mb': 'nan',
         }
@@ -83,6 +97,9 @@ class BuildLog(object):
         plugin_re = re.compile(r'([0-9 :-]*),[0-9]+ - atomic_reactor.plugin - DEBUG - running plugin \'(.*)\'')
         with open(self.logfile) as lf:
             log = lf.read()
+            if len(log) < 50:
+                raise MissingLog
+
             name = name_re.search(log)
             if name:
                 self.data['name'] = name.groups()[0]
@@ -100,10 +117,26 @@ class BuildLog(object):
 
                 last_plugin = (t, plugin_name)
 
+        with open(cache, 'w') as cf:
+            json.dump(self.data, cf, indent=2)
+
 
 class Builds(object):
     def __init__(self, builds):
         self.builds = builds
+
+    def fetch_log(self, name):
+        logfile = "{name}.log".format(name=name)
+        if not os.access(logfile, os.R_OK):
+            cmd = ['osbs',
+                   'build-logs',
+                   name]
+            with open(logfile, 'w') as fp:
+                print(' '.join(cmd))
+                p = subprocess.Popen(cmd, stdout=fp)
+                p.communicate()
+
+        return BuildLog(logfile).data
 
     def get_stats(self):
         builds_examined = 0
@@ -111,6 +144,7 @@ class Builds(object):
         latest_completion = None
         states = defaultdict(int)
         tputmodel = ThroughputModel(60 * 60)
+        missing = []
         results = {
             'archived': [],
             'current': [],
@@ -122,9 +156,12 @@ class Builds(object):
                   if 'completionTimestamp' in build['status']]
         builds.sort(key=lambda x: x['status']['completionTimestamp'])
 
+        tput = 0
         for build in builds:
+            name = build['metadata']['name']
             completionTimestamp = build['status']['completionTimestamp']
             completion = rfc3339_time(completionTimestamp)
+            timestamp = strftime("%Y-%m-%d %H:%M:%S", gmtime(completion))
             if earliest_completion is None:
                 earliest_completion = latest_completion = completion
 
@@ -132,55 +169,61 @@ class Builds(object):
 
             state = build['status']['phase']
             states[state] += 1
+            creationTimestamp = build['metadata']['creationTimestamp']
+            creation = rfc3339_time(creationTimestamp)
             startTimestamp = build['status'].get('startTimestamp')
-            if startTimestamp is not None:
-                start = rfc3339_time(startTimestamp)
+            if startTimestamp is None:
+                continue
+
+            start = rfc3339_time(startTimestamp)
+            pending = start - creation
+            if pending < 0:
+                which = 'archived'
+                pending = upload_size_mb = 'nan'
+            else:
+                which = 'current'
+                try:
+                    build_log = self.fetch_log(name)
+                except MissingLog:
+                    missing.append(name)
+                    build_log = {}
+
             duration = build['metadata'].get('duration', 0) / 1000000000
+            plugins = {name: 'nan'
+                       for name in ['pull_base_image',
+                                    'distgit_fetch_artefacts',
+                                    'dockerfile_content',
+                                    'squash',
+                                    'compress',
+                                    'pulp_push']}
 
             if state == 'Complete':
-                assert startTimestamp is not None
-                timestamp = strftime("%Y-%m-%d %H:%M:%S", gmtime(completion))
+                # Count this towards throughput
                 tput = tputmodel.append(completion)
 
-                creationTimestamp = build['metadata']['creationTimestamp']
-                creation = rfc3339_time(creationTimestamp)
-                name = build['metadata']['name']
-                pending = start - creation
-                plugins = {name: 'nan'
-                           for name in ['pull_base_image',
-                                        'distgit_fetch_artefacts',
-                                        'dockerfile_content',
-                                        'squash',
-                                        'pulp_push']}
-                if pending < 0:
-                    which = 'archived'
-                    pending = upload_size_mb = 'nan'
-                else:
-                    which = 'current'
-                    logfile = "{name}.log".format(name=name)
-                    if not os.access(logfile, os.R_OK):
-                        cmd = ['osbs',
-                               'build-logs',
-                               name]
-                        with open(logfile, 'w') as fp:
-                            print(' '.join(cmd))
-                            p = subprocess.Popen(cmd, stdout=fp)
-                            p.communicate()
-
-                    build_log = BuildLog(logfile)
-                    log_data = build_log.data
-                    upload_size_mb = log_data.get('upload_size_mb', 'nan')
+                if which == 'current':
+                    upload_size_mb = build_log.get('upload_size_mb', 'nan')
                     for plugin in plugins.keys():
                         try:
-                            plugins[plugin] = log_data[plugin]
+                            plugins[plugin] = build_log[plugin]
                         except KeyError:
                             pass
 
                 metrics = Metrics(completion=timestamp,
+                                  state=state,
                                   throughput=tput,
                                   pending=pending,
                                   running=duration,
                                   upload_size_mb=upload_size_mb,
+                                  **plugins)
+                results[which].append(metrics)
+            elif state == 'Failed':
+                metrics = Metrics(completion=timestamp,
+                                  state=state,
+                                  throughput=tput,
+                                  pending=pending,
+                                  running=duration,
+                                  upload_size_mb='nan',
                                   **plugins)
                 results[which].append(metrics)
 
@@ -220,6 +263,7 @@ class Builds(object):
             'earliest_completion': ctime(earliest_completion),
             'latest_completion': ctime(latest_completion),
             'states': states,
+            'missing-log': missing,
         }
 
         

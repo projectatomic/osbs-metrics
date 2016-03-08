@@ -8,7 +8,8 @@ import sys
 from time import ctime, gmtime, strftime, strptime
 
 
-FIELDS = [('completion', 'completion'),
+FIELDS = [('name', 'name'),
+          ('completion', 'completion'),
           ('state', 'state'),
           ('throughput', 'throughput'),
           ('pending', 'pending'),
@@ -19,7 +20,9 @@ FIELDS = [('completion', 'completion'),
           ('squash', 'plugin_squash'),
           ('compress', 'plugin_compress'),
           ('pulp_push', 'plugin_pulp_push'),
-          ('upload_size_mb', 'upload_size_mb')]
+          ('upload_size_mb', 'upload_size_mb'),
+          ('failed_plugin', 'failed_plugin'),
+          ('exception', 'exception')]
 Metrics = namedtuple('Metrics', [field[0] for field in FIELDS])
 
 
@@ -95,6 +98,8 @@ class BuildLog(object):
         name_re = re.compile(r'selflink.: u./oapi/v1/namespaces/default/builds/([^,]*).,')
         size_re = re.compile(r' - dockpulp - INFO - uploading a (.*)M image')
         plugin_re = re.compile(r'([0-9 :-]*),[0-9]+ - atomic_reactor.plugin - DEBUG - running plugin \'(.*)\'')
+        error_re = re.compile(r'ERROR - .*plugin \'(.*)\' raised an exception: ([^(]*)')
+        buildfail_re = re.compile(r'INFO - build was unsuccess?ful')
         with open(self.logfile) as lf:
             log = lf.read()
             if len(log) < 50:
@@ -116,6 +121,16 @@ class BuildLog(object):
                     self.data[last_plugin[1]] = t - last_plugin[0]
 
                 last_plugin = (t, plugin_name)
+
+            error = error_re.search(log)
+            if error:
+                (self.data['failed_plugin'],
+                 self.data['exception']) = error.groups()
+            else:
+                buildfail = buildfail_re.search(log)
+                if buildfail:
+                    self.data['failed_plugin'] = 'build'
+                    self.data['exception'] = ''
 
         with open(cache, 'w') as cf:
             json.dump(self.data, cf, indent=2)
@@ -177,6 +192,7 @@ class Builds(object):
 
             start = rfc3339_time(startTimestamp)
             pending = start - creation
+            build_log = {}
             if pending < 0:
                 which = 'archived'
                 pending = upload_size_mb = 'nan'
@@ -186,9 +202,8 @@ class Builds(object):
                     build_log = self.fetch_log(name)
                 except MissingLog:
                     missing.append(name)
-                    build_log = {}
 
-            duration = build['metadata'].get('duration', 0) / 1000000000
+            duration = build['status'].get('duration', 0) / 1000000000
             plugins = {name: 'nan'
                        for name in ['pull_base_image',
                                     'distgit_fetch_artefacts',
@@ -196,6 +211,9 @@ class Builds(object):
                                     'squash',
                                     'compress',
                                     'pulp_push']}
+            plugins.update({name: build_log.get(name, '')
+                            for name in ['failed_plugin',
+                                         'exception']})
 
             if state == 'Complete':
                 # Count this towards throughput
@@ -209,7 +227,8 @@ class Builds(object):
                         except KeyError:
                             pass
 
-                metrics = Metrics(completion=timestamp,
+                metrics = Metrics(name=name,
+                                  completion=timestamp,
                                   state=state,
                                   throughput=tput,
                                   pending=pending,
@@ -218,7 +237,8 @@ class Builds(object):
                                   **plugins)
                 results[which].append(metrics)
             elif state == 'Failed':
-                metrics = Metrics(completion=timestamp,
+                metrics = Metrics(name=name,
+                                  completion=timestamp,
                                   state=state,
                                   throughput=tput,
                                   pending=pending,

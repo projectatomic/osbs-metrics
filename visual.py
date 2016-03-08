@@ -21,11 +21,14 @@ def MyHistogram(data, bins, **kwargs):
 def run(metrics_file, concurrent_file, postfeb26):
     concurrent = pd.read_csv(concurrent_file, parse_dates=['timestamp'])
 
-    metrics = pd.read_csv(metrics_file, parse_dates=['completion'])
+    all_metrics = pd.read_csv(metrics_file, parse_dates=['completion'])
+
+    completed = all_metrics['state'] == 'Complete'
+    metrics = all_metrics[completed]
 
     # Network fix made 2016-02-26 approx 2000 UTC
-    network_fix = metrics['completion'] > datetime.datetime(2016, 2, 26,
-                                                            20, 0)
+    network_fix = metrics[completed]['completion'] > datetime.datetime(2016, 2, 26,
+                                                                       20, 0)
     if postfeb26:
         fname = '-since-feb26'
         when = ' (since Feb 26)'
@@ -66,7 +69,7 @@ def run(metrics_file, concurrent_file, postfeb26):
     # concurrent builds
     s3 = figure(width=800, height=350, title='concurrent builds' + when,
                 x_axis_type='datetime')
-    start = metrics['completion'][0]
+    start = metrics['completion'][metrics.index[0]]
     which_c = concurrent['timestamp'] > start
     if not postfeb26:
         which_c = ~which_c

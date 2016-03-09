@@ -220,7 +220,14 @@ class Builds(object):
                 tput = tputmodel.append(completion)
 
                 if which == 'current':
-                    upload_size_mb = build_log.get('upload_size_mb', 'nan')
+                    annotations = build['metadata'].get('annotations', {})
+                    tar_metadata = annotations.get('tar_metadata')
+                    if tar_metadata:
+                        md = json.loads(tar_metadata)
+                        upload_size_mb = md['size'] / (1024 * 1024)
+                    else:
+                        upload_size_mb = build_log.get('upload_size_mb', 'nan')
+
                     for plugin in plugins.keys():
                         try:
                             plugins[plugin] = build_log[plugin]

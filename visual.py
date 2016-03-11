@@ -27,8 +27,8 @@ def run(metrics_file, concurrent_file, postfeb26):
     metrics = all_metrics[completed]
 
     # Network fix made 2016-02-26 approx 2000 UTC
-    network_fix = metrics[completed]['completion'] > datetime.datetime(2016, 2, 26,
-                                                                       20, 0)
+    network_fix = metrics['completion'] > datetime.datetime(2016, 2, 26,
+                                                            20, 0)
     if postfeb26:
         fname = '-since-feb26'
         when = ' (since Feb 26)'
@@ -45,8 +45,8 @@ def run(metrics_file, concurrent_file, postfeb26):
     s1 = figure(width=800, height=350, x_axis_type='datetime',
                 title='hourly throughput' + when)
     s1.legend.orientation = 'bottom_left'
-    s1.circle(metrics[which]['completion'],
-              metrics[which]['throughput'],
+    s1.circle(metrics[which & completed]['completion'],
+              metrics[which & completed]['throughput'],
               color='blue', alpha=0.2, size=12,
               legend='hourly throughput')
     peak = Span(location=metrics[which]['throughput'].max(), dimension='width',

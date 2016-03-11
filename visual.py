@@ -98,26 +98,27 @@ def run(metrics_file, concurrent_file, postfeb26):
     charts.append(hsize)
 
     # running time by plugin
-    these_metrics = metrics[which][valid]
-    for values, bins, title in [
-            (these_metrics['running'], None,
+    these_metrics = metrics[which]
+    for column, bins, title in [
+            ('running', None,
              'Total build time' + when),
 
-            (these_metrics['plugin_pull_base_image'], 15,
+            ('plugin_pull_base_image', 15,
              'Time pulling base image' + when),
 
-            (these_metrics['plugin_distgit_fetch_artefacts'], 6,
+            ('plugin_distgit_fetch_artefacts', 6,
              'Time fetching sources' + when),
 
-            (these_metrics['docker_build'], None,
+            ('docker_build', None,
              'Time in docker build' + when),
 
-            (these_metrics['plugin_squash'], None,
+            ('plugin_squash', None,
              'Time squashing layers' + when),
 
-            (these_metrics['plugin_pulp_push'], None,
+            ('plugin_pulp_push', None,
              'Time uploading to pulp' + when),
     ]:
+        values = these_metrics[column][~np.isnan(these_metrics[column])]
         h = MyHistogram(values, title=title, x_axis_type='datetime',
                         bins=bins or 10, plot_width=800, plot_height=350)
         h.xaxis.formatter = NumeralTickFormatter(format="00:00:00")

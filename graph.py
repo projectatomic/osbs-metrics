@@ -62,9 +62,12 @@ class BuildTree(object):
         return txt
 
 
-def run(inputfile):
-    with open(inputfile) as fp:
-        builds = json.load(fp)
+def run(inputfile=None):
+    if inputfile is not None:
+        with open(inputfile) as fp:
+            builds = json.load(fp)
+    else:
+        builds = json.load(sys.stdin)
 
     tree = BuildTree(builds)
     tree.trim_excess_tags()
@@ -72,4 +75,7 @@ def run(inputfile):
 
 
 if __name__ == '__main__':
-    run(sys.argv[1])
+    try:
+        run(sys.argv[1])
+    except IndexError:
+        run()

@@ -53,15 +53,22 @@ class BuildTree(object):
     def __repr__(self):
         return repr(self.deps)
 
+    def as_graph_easy_txt(self):
+        txt = ''
+        for base, layers in self.deps.items():
+            for layer in layers:
+                txt += "[ %s ] --> [ %s ]\n" % (base, layer)
+
+        return txt
+
 
 def run(inputfile):
     with open(inputfile) as fp:
         builds = json.load(fp)
 
-    from pprint import pprint
     tree = BuildTree(builds)
     tree.trim_excess_tags()
-    pprint(tree.deps)
+    print(tree.as_graph_easy_txt())
 
 
 if __name__ == '__main__':

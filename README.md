@@ -29,5 +29,5 @@ Use like this:
 osbs --output=json list-builds | \
     python ./graph.py | \
     graph-easy --as=dot | \
-    dot -Tps > builds.svg
+    dot -Tsvg > builds.svg
 ```

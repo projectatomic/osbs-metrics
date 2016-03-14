@@ -8,6 +8,7 @@ class BuildTree(object):
     def __init__(self, builds):
         self.deps = defaultdict(set)
         self.seen = set()
+        self.when = {}
         builds.sort(key=lambda x: x['metadata']['creationTimestamp'],
                     reverse=True)
         for build in builds:
@@ -18,6 +19,7 @@ class BuildTree(object):
             annotations = build['metadata']['annotations']
             base_image_name = annotations['base-image-name']
             repositories = json.loads(annotations['repositories'])
+            when = build['metadata']['creationTimestamp']
         except KeyError:
             return
 
@@ -30,6 +32,8 @@ class BuildTree(object):
 
         self.seen.update(repos)
         self.deps[strip_registry_from_image(base_image_name)].update(repos)
+        for repo in repos:
+            self.when[repo] = when
 
     def _trim_layers(self, base):
         layers = self.deps[base]
@@ -55,9 +59,20 @@ class BuildTree(object):
 
     def as_graph_easy_txt(self):
         txt = ''
+        def formatwhen(name):
+            try:
+                return "\\n{when}".format(when=self.when[name][:10])
+            except KeyError:
+                return ""
+
         for base, layers in self.deps.items():
             for layer in layers:
-                txt += "[ %s ] --> [ %s ]\n" % (base, layer)
+                txt += "[ {base}{when} ]".format(base=base,
+                                                 when=formatwhen(base))
+                txt += " --> "
+                txt += "[ {layer}{when} ]".format(layer=layer,
+                                                  when=formatwhen(layer))
+                txt += "\n"
 
         return txt
 

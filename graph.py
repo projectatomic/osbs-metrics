@@ -9,7 +9,10 @@ class BuildTree(object):
         self.deps = defaultdict(set)
         self.seen = set()
         self.when = {}
-        builds.sort(key=lambda x: x['metadata']['creationTimestamp'],
+        builds = [build for build in builds
+                  if ('status' in build and
+                      'startTimestamp' in build['status'])]
+        builds.sort(key=lambda x: x['status']['startTimestamp'],
                     reverse=True)
         for build in builds:
             self.add(build)
@@ -19,7 +22,7 @@ class BuildTree(object):
             annotations = build['metadata']['annotations']
             base_image_name = annotations['base-image-name']
             repositories = json.loads(annotations['repositories'])
-            when = build['metadata']['creationTimestamp']
+            when = build['status']['startTimestamp']
         except KeyError:
             return
 

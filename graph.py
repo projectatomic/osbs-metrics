@@ -42,17 +42,24 @@ class BuildTree(object):
             name, version = layer.split(':', 1)
             if version == 'latest':
                 pass
-            elif layer not in self.deps:
+            elif not self.deps.get(layer):
                 # Leaf node
                 excess.add(layer)
 
-        self.deps[base] = list(set(layers) - excess)
+        self.deps[base] -= excess
+        return excess
 
     def trim_excess_tags(self):
-        images = [image for image in self.deps.keys()]
-        for base in images:
-            if base in self.deps:
-                self._trim_layers(base)
+        while True:
+            images = [image for image in self.deps.keys()]
+            any_trimmed = False
+            for base in images:
+                if self.deps.get(base):
+                    if self._trim_layers(base):
+                        any_trimmed = True
+
+            if not any_trimmed:
+                break
 
     def __repr__(self):
         return repr(self.deps)

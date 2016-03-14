@@ -29,15 +29,7 @@ class BuildTree(object):
         repos = set([strip_registry_from_image(repo)
                      for repo in repositories['primary']])
         duplicates = self.seen.intersection(repos)
-        if duplicates:
-            # We've already seen this build. Ignore it unless some
-            # other build depends on it.
-            for repo in repos:
-                if repo in self.deps:
-                    break
-            else:
-                return
-
+        repos -= duplicates
         self.seen.update(repos)
         self.deps[strip_registry_from_image(base_image_name)].update(repos)
         for repo in repos:

@@ -57,12 +57,15 @@ class BuildTree(object):
     def __repr__(self):
         return repr(self.deps)
 
-    def as_graph_easy_txt(self):
+    def as_graph_easy_txt(self, include_datestamp=False):
         txt = ''
         def formatwhen(name):
-            try:
-                return "\\n{when}".format(when=self.when[name][:10])
-            except KeyError:
+            if include_datestamp:
+                try:
+                    return "\\n{when}".format(when=self.when[name][:10])
+                except KeyError:
+                    return ""
+            else:
                 return ""
 
         for base, layers in self.deps.items():
@@ -86,7 +89,7 @@ def run(inputfile=None):
 
     tree = BuildTree(builds)
     tree.trim_excess_tags()
-    print(tree.as_graph_easy_txt())
+    print(tree.as_graph_easy_txt(include_datestamp=True))
 
 
 if __name__ == '__main__':

@@ -26,9 +26,8 @@ class BuildTree(object):
         except KeyError:
             return
 
-        repos = [strip_registry_from_image(repo)
-                 for repos in repositories.values()
-                 for repo in repos]
+        repos = set([strip_registry_from_image(repo)
+                     for repo in repositories['primary']])
         duplicates = self.seen.intersection(repos)
         if duplicates:
             # We've already seen this build. Ignore it unless some

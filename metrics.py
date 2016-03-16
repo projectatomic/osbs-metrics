@@ -139,8 +139,13 @@ class BuildLog(object):
 class Builds(object):
     def __init__(self, builds):
         self.builds = builds
+        self.metrics_require_logs = int(os.environ.get('METRICS_REQUIRE_LOGS',
+                                                       1))
 
     def fetch_log(self, name):
+        if not self.metrics_require_logs:
+            raise MissingLog
+
         logfile = "{name}.log".format(name=name)
         if not os.access(logfile, os.R_OK):
             cmd = ['osbs',

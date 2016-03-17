@@ -69,7 +69,7 @@ def run(metrics_file, concurrent_file, postfeb26):
     # concurrent builds
     s3 = figure(width=800, height=350, title='concurrent builds' + when,
                 x_axis_type='datetime')
-    start = metrics['completion'][metrics.index[0]]
+    start = metrics['completion'][metrics[which].index[0]]
     which_c = concurrent['timestamp'] > start
     if not postfeb26:
         which_c = ~which_c

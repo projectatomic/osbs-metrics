@@ -27,6 +27,12 @@ class Charts(object):
         self.completed = self.all_metrics['state'] == 'Complete'
         self.metrics = self.all_metrics[self.completed]
 
+        # Work out which image has median compressed size
+        compressed = ~np.isnan(self.metrics['plugin_compress'])
+        median = np.median(self.metrics[compressed]['upload_size_mb'])
+        match = self.metrics[self.metrics['upload_size_mb'] == median]['image']
+        self.image = match.values[0]
+
     def get_time_charts(self, time_selector, suffix, width=600, height=350):
         charts = []
 
@@ -116,6 +122,33 @@ class Charts(object):
             h.xaxis.ticker = AdaptiveTicker(mantissas=[1,3,6])
             h.yaxis.bounds = (0, len(these_metrics))
             charts.append(h)
+
+        # Now show plugin-level timings for a specific image
+        # data looks like:
+        # completion  image       plugin_x  plugin_y
+        # 2016-03-18  image/name    205       60
+        #
+        # reshape to:
+        # imgae       plugin      value
+        # image/name  plugin_x    205
+        # image/name  plugin_y    60
+        is_image = self.metrics[selector]['image'] == self.image
+        image = self.metrics[selector][is_image]
+        timings = pd.melt(image[['image',
+                                 'running',
+                                 'plugin_pull_base_image',
+                                 'plugin_distgit_fetch_artefacts',
+                                 'docker_build',
+                                 'plugin_squash',
+                                 'plugin_compress',
+                                 'plugin_pulp_push']],
+                          id_vars=['image'], var_name='plugin')
+        im = BoxPlot(timings, values='value', label='plugin',
+                     width=width, height=height * 2,
+                     title='%s timings%s' % (self.image, suffix))
+        im._yaxis.formatter = NumeralTickFormatter(format="00:00:00")
+        im._yaxis.ticker = AdaptiveTicker(mantissas=[1,3,6])
+        charts.append(im)
 
         return charts
 

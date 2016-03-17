@@ -18,118 +18,122 @@ def MyHistogram(data, bins, **kwargs):
     return p
 
 
-def run(metrics_file, concurrent_file, postfeb26):
-    concurrent = pd.read_csv(concurrent_file, parse_dates=['timestamp'])
+class Charts(object):
+    def __init__(self, metrics_file, concurrent_file):
+        self.concurrent = pd.read_csv(concurrent_file,
+                                      parse_dates=['timestamp'])
+        self.all_metrics = pd.read_csv(metrics_file,
+                                       parse_dates=['completion'])
+        self.completed = self.all_metrics['state'] == 'Complete'
+        self.metrics = self.all_metrics[self.completed]
 
-    all_metrics = pd.read_csv(metrics_file, parse_dates=['completion'])
+    def get_time_charts(self, time_selector, suffix, width=600, height=350):
+        charts = []
 
-    completed = all_metrics['state'] == 'Complete'
-    metrics = all_metrics[completed]
+        selector = time_selector(self.metrics['completion'])
 
-    # Network fix made 2016-02-26 approx 2000 UTC
-    network_fix = metrics['completion'] > datetime.datetime(2016, 2, 26,
-                                                            20, 0)
-    if postfeb26:
-        fname = '-since-feb26'
-        when = ' (since Feb 26)'
-        which = network_fix
-    else:
-        fname = '-to-feb26'
-        when = ' (to Feb 26)'
-        which = ~network_fix
+        # hourly throughput
+        s1 = figure(width=width, height=height, x_axis_type='datetime',
+                    title='hourly throughput' + suffix)
+        s1.legend.orientation = 'bottom_left'
+        s1.circle(self.metrics[selector & self.completed]['completion'],
+                  self.metrics[selector & self.completed]['throughput'],
+                  color='blue', alpha=0.2, size=12,
+                  legend='hourly throughput')
+        peak = Span(location=self.metrics[selector]['throughput'].max(),
+                    dimension='width',
+                    line_color='green', line_dash='dashed', line_width=3)
+        s1.renderers.extend([peak])
+        charts.append(s1)
 
-    output_file(metrics_file.replace('.csv', fname + '.html'))
-    charts = []
+        # upload size / pulp upload time
+        s2 = figure(width=width, height=height,
+                    title='upload size vs pulp upload time' + suffix)
+        s2.xaxis.axis_label = 'Time uploading to pulp'
+        s2.yaxis.axis_label = 'upload size (Mb)'
+        s2.xaxis.formatter = NumeralTickFormatter(format="00:00:00")
+        s2.xaxis.ticker = AdaptiveTicker(mantissas=[1,3,6])
+        s2.square(self.metrics[selector]['plugin_pulp_push'],
+                  self.metrics[selector]['upload_size_mb'],
+                  color='orange', alpha=0.2, size=12)
+        charts.append(s2)
 
-    # hourly throughput
-    s1 = figure(width=800, height=350, x_axis_type='datetime',
-                title='hourly throughput' + when)
-    s1.legend.orientation = 'bottom_left'
-    s1.circle(metrics[which & completed]['completion'],
-              metrics[which & completed]['throughput'],
-              color='blue', alpha=0.2, size=12,
-              legend='hourly throughput')
-    peak = Span(location=metrics[which]['throughput'].max(), dimension='width',
-                line_color='green', line_dash='dashed', line_width=3)
-    s1.renderers.extend([peak])
-    charts.append(s1)
+        # concurrent builds
+        s3 = figure(width=width, height=height, title='concurrent builds' + suffix,
+                    x_axis_type='datetime')
+        which_c = time_selector(self.concurrent['timestamp'])
+        s3.line(self.concurrent[which_c]['timestamp'],
+                self.concurrent[which_c]['nbuilds'],
+                line_color='green',
+                line_join='bevel')
+        charts.append(s3)
 
-    # upload size / pulp upload time
-    s2 = figure(width=800, height=350,
-                title='upload size vs pulp upload time' + when)
-    s2.xaxis.axis_label = 'Time uploading to pulp'
-    s2.yaxis.axis_label = 'upload size (Mb)'
-    s2.xaxis.formatter = NumeralTickFormatter(format="00:00:00")
-    s2.xaxis.ticker = AdaptiveTicker(mantissas=[1,3,6])
-    s2.square(metrics[which]['plugin_pulp_push'],
-              metrics[which]['upload_size_mb'],
-              color='orange', alpha=0.2, size=12)
-    charts.append(s2)
+        # squash time vs concurrent builds
+        merged = self.metrics[selector].merge(self.concurrent[which_c],
+                                              left_on=['completion'],
+                                              right_on=['timestamp'],
+                                              sort=False)
+        sc = BoxPlot(merged, values='plugin_squash', label='nbuilds',
+                     width=width, height=height,
+                     title='squash time vs (other) concurrent builds' + suffix)
+        sc._yaxis.formatter = NumeralTickFormatter(format="00:00:00")
+        sc._yaxis.ticker = AdaptiveTicker(mantissas=[1,3,6])
+        charts.append(sc)
 
-    # concurrent builds
-    s3 = figure(width=800, height=350, title='concurrent builds' + when,
-                x_axis_type='datetime')
-    start = metrics['completion'][metrics[which].index[0]]
-    which_c = concurrent['timestamp'] > start
-    if not postfeb26:
-        which_c = ~which_c
+        # upload_size_mb
+        valid = ~np.isnan(self.metrics['upload_size_mb'])
+        hsize = MyHistogram(self.metrics['upload_size_mb'][selector][valid], bins=10,
+                            title='Upload size' + suffix,
+                            plot_width=width, plot_height=height)
+        hsize.xaxis.axis_label = 'Mb'
+        charts.append(hsize)
 
-    s3.line(concurrent[which_c]['timestamp'],
-            concurrent[which_c]['nbuilds'],
-            line_color='green',
-            line_join='bevel')
-    charts.append(s3)
-
-    merged = metrics.merge(concurrent,
-                           left_on=['completion'], right_on=['timestamp'],
-                           sort=False)
-    sc = BoxPlot(merged, values='plugin_squash', label='nbuilds',
-                 width=800, height=350,
-                 title='squash time vs (other) concurrent builds (all time)')
-    sc._yaxis.formatter = NumeralTickFormatter(format="00:00:00")
-    sc._yaxis.ticker = AdaptiveTicker(mantissas=[1,3,6])
-    charts.append(sc)
-
-    valid = ~np.isnan(metrics['upload_size_mb'])
-    hsize = MyHistogram(metrics['upload_size_mb'][which][valid], bins=10,
-                        title='Upload size' + when,
-                        plot_width=800, plot_height=350)
-    hsize.xaxis.axis_label = 'Mb'
-    charts.append(hsize)
-
-    # running time by plugin
-    these_metrics = metrics[which]
-    for column, bins, title in [
+        # running time by plugin
+        these_metrics = self.metrics[selector]
+        for column, bins, title in [
             ('running', None,
-             'Total build time' + when),
+             'Total build time' + suffix),
 
             ('plugin_pull_base_image', 15,
-             'Time pulling base image' + when),
+             'Time pulling base image' + suffix),
 
-            ('plugin_distgit_fetch_artefacts', 6,
-             'Time fetching sources' + when),
+            ('plugin_distgit_fetch_artefacts', None,
+             'Time fetching sources' + suffix),
 
             ('docker_build', None,
-             'Time in docker build' + when),
+             'Time in docker build' + suffix),
 
             ('plugin_squash', None,
-             'Time squashing layers' + when),
+             'Time squashing layers' + suffix),
 
             ('plugin_pulp_push', None,
-             'Time uploading to pulp' + when),
-    ]:
-        values = these_metrics[column][~np.isnan(these_metrics[column])]
-        h = MyHistogram(values, title=title, x_axis_type='datetime',
-                        bins=bins or 10, plot_width=800, plot_height=350)
-        h.xaxis.formatter = NumeralTickFormatter(format="00:00:00")
-        h.xaxis.ticker = AdaptiveTicker(mantissas=[1,3,6])
-        h.yaxis.bounds = (0, len(these_metrics))
-        charts.append(h)
+             'Time uploading to pulp' + suffix),
+        ]:
+            values = these_metrics[column][~np.isnan(these_metrics[column])]
+            h = MyHistogram(values, title=title, x_axis_type='datetime',
+                            bins=bins or 10, plot_width=width, plot_height=height)
+            h.xaxis.formatter = NumeralTickFormatter(format="00:00:00")
+            h.xaxis.ticker = AdaptiveTicker(mantissas=[1,3,6])
+            h.yaxis.bounds = (0, len(these_metrics))
+            charts.append(h)
 
-    p = vplot(*charts)
-    show(p)
+        return charts
+
+    def run(self):
+        def since(x):
+            return x > datetime.date(2016, 3, 16)
+
+        def until(x):
+            return ((x > datetime.datetime(2016, 2, 26, 20, 0)) &
+                    (x <= datetime.date(2016, 3, 16)))
+
+        time_charts = [self.get_time_charts(until, ' (Feb 26 - Mar 16)'),
+                       self.get_time_charts(since, ' (since Mar 16)')]
+        p = [hplot(*x) for x in zip(*time_charts)]
+        charts = vplot(*p)
+        output_file('metrics.html')
+        show(charts)
 
 
 if __name__ == '__main__':
-    for postfeb26 in False, True:
-        run(sys.argv[1], sys.argv[2], postfeb26)
+    Charts(sys.argv[1], sys.argv[2]).run()

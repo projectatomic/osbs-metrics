@@ -9,6 +9,7 @@ from time import ctime, gmtime, strftime, strptime
 
 
 FIELDS = [('name', 'name'),
+          ('image', 'image'),
           ('completion', 'completion'),
           ('state', 'state'),
           ('throughput', 'throughput'),
@@ -99,6 +100,7 @@ class BuildLog(object):
         size_re = re.compile(r' - dockpulp - INFO - uploading a (.*)M image')
         plugin_re = re.compile(r'([0-9 :-]*),[0-9]+ - atomic_reactor.plugin - DEBUG - running plugin \'(.*)\'')
         error_re = re.compile(r'ERROR - .*plugin \'(.*)\' raised an exception: ([^(]*)')
+        image_re = re.compile(r'pulp_push - INFO - image names: \[.*\'([^\']*):latest')
         buildfail_re = re.compile(r'INFO - build was unsuccess?ful')
         with open(self.logfile) as lf:
             log = lf.read()
@@ -112,6 +114,10 @@ class BuildLog(object):
             size = size_re.search(log)
             if size:
                 self.data['upload_size_mb'] = size.groups()[0]
+
+            image = image_re.search(log)
+            if image:
+                self.data['image'] = image.groups()[0]
 
             last_plugin = None
             plugins = plugin_re.findall(log)
@@ -217,7 +223,8 @@ class Builds(object):
                                     'compress',
                                     'pulp_push']}
             plugins.update({name: build_log.get(name, '')
-                            for name in ['failed_plugin',
+                            for name in ['image',
+                                         'failed_plugin',
                                          'exception']})
 
             if state == 'Complete':

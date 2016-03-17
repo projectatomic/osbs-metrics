@@ -23,14 +23,19 @@ class Charts(object):
         self.concurrent = pd.read_csv(concurrent_file,
                                       parse_dates=['timestamp'])
         self.all_metrics = pd.read_csv(metrics_file,
-                                       parse_dates=['completion'])
+                                       parse_dates=['completion'],
+                                       na_values={'image': ''},
+                                       keep_default_na=False)
         self.completed = self.all_metrics['state'] == 'Complete'
         self.metrics = self.all_metrics[self.completed]
 
         # Work out which image has median compressed size
         compressed = ~np.isnan(self.metrics['plugin_compress'])
-        median = np.median(self.metrics[compressed]['upload_size_mb'])
-        match = self.metrics[self.metrics['upload_size_mb'] == median]['image']
+        has_image = self.metrics['image'] != ''
+        median = np.median(self.metrics[compressed & has_image]['upload_size_mb'])
+        match = self.metrics[has_image &
+                             (np.abs(self.metrics['upload_size_mb'] -
+                                     median) < 1)]['image']
         self.image = match.values[0]
 
     def get_time_charts(self, time_selector, suffix, width=600, height=350):

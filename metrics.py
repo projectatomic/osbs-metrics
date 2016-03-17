@@ -299,12 +299,18 @@ class Builds(object):
         }
 
         
-def run(inputfile):
-    with open(inputfile) as fp:
-        builds = json.load(fp)
+def run(inputfile=None):
+    if inputfile is not None:
+        with open(inputfile) as fp:
+            builds = json.load(fp)
+    else:
+        builds = json.load(sys.stdin)
 
     print(json.dumps(Builds(builds).get_stats(), sort_keys=True, indent=2))
 
 
 if __name__ == '__main__':
-    run(sys.argv[1])
+    try:
+        run(sys.argv[1])
+    except IndexError:
+        run()

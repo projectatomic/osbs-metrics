@@ -36,7 +36,10 @@ class Charts(object):
         match = self.metrics[has_image &
                              (np.abs(self.metrics['upload_size_mb'] -
                                      median) < 1)]['image']
-        self.image = match.values[0]
+        if match.values:
+            self.image = match.values[0]
+        else:
+            self.image = None
 
     def get_time_charts(self, time_selector, suffix, width=600, height=350):
         charts = []
@@ -137,23 +140,24 @@ class Charts(object):
         # imgae       plugin      value
         # image/name  plugin_x    205
         # image/name  plugin_y    60
-        is_image = self.metrics[selector]['image'] == self.image
-        image = self.metrics[selector][is_image]
-        timings = pd.melt(image[['image',
-                                 'running',
-                                 'plugin_pull_base_image',
-                                 'plugin_distgit_fetch_artefacts',
-                                 'docker_build',
-                                 'plugin_squash',
-                                 'plugin_compress',
-                                 'plugin_pulp_push']],
-                          id_vars=['image'], var_name='plugin')
-        im = BoxPlot(timings, values='value', label='plugin',
-                     width=width, height=height * 2,
-                     title='%s timings%s' % (self.image, suffix))
-        im._yaxis.formatter = NumeralTickFormatter(format="00:00:00")
-        im._yaxis.ticker = AdaptiveTicker(mantissas=[1,3,6])
-        charts.append(im)
+        if self.image:
+            is_image = self.metrics[selector]['image'] == self.image
+            image = self.metrics[selector][is_image]
+            timings = pd.melt(image[['image',
+                                     'running',
+                                     'plugin_pull_base_image',
+                                     'plugin_distgit_fetch_artefacts',
+                                     'docker_build',
+                                     'plugin_squash',
+                                     'plugin_compress',
+                                     'plugin_pulp_push']],
+                              id_vars=['image'], var_name='plugin')
+            im = BoxPlot(timings, values='value', label='plugin',
+                         width=width, height=height * 2,
+                         title='%s timings%s' % (self.image, suffix))
+            im._yaxis.formatter = NumeralTickFormatter(format="00:00:00")
+            im._yaxis.ticker = AdaptiveTicker(mantissas=[1,3,6])
+            charts.append(im)
 
         return charts
 

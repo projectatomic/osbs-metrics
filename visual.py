@@ -45,6 +45,8 @@ class Charts(object):
         charts = []
 
         selector = time_selector(self.metrics['completion'])
+        if not any(selector):
+            return charts
 
         # hourly throughput
         s1 = figure(width=width, height=height, x_axis_type='datetime',
@@ -171,6 +173,7 @@ class Charts(object):
 
         time_charts = [self.get_time_charts(until, ' (Feb 26 - Mar 16)'),
                        self.get_time_charts(since, ' (since Mar 16)')]
+        time_charts = [charts for charts in time_charts if charts]
         p = [hplot(*x) for x in zip(*time_charts)]
         charts = vplot(*p)
         output_file('metrics.html')

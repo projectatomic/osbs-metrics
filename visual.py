@@ -36,7 +36,7 @@ class Charts(object):
         match = self.metrics[has_image &
                              (np.abs(self.metrics['upload_size_mb'] -
                                      median) < 1)]['image']
-        if match.values:
+        if len(match.values) > 0:
             self.image = match.values[0]
         else:
             self.image = None

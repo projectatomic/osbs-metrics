@@ -144,11 +144,10 @@ class BuildLog(object):
 
 
 class Builds(object):
-    def __init__(self, builds, osbs_instance=None):
+    def __init__(self, builds, osbs_instance=None, metrics_require_logs=True):
         self.osbs_instance = osbs_instance
         self.builds = builds
-        self.metrics_require_logs = int(os.environ.get('METRICS_REQUIRE_LOGS',
-                                                       1))
+        self.metrics_require_logs = metrics_require_logs
 
     def fetch_log(self, name):
         if not self.metrics_require_logs:
@@ -234,6 +233,22 @@ class Builds(object):
                                          'failed_plugin',
                                          'exception']})
 
+
+            try:
+                plugins_metadata = json.loads(build['metadata']['annotations']['plugins-metadata'])
+                durations = plugins_metadata['durations']
+            except Exception:
+                plugins_metadata = {}
+                durations = {}
+
+            try:
+                errors = plugins_metadata['errors']
+                first_failed = sorted(errors.keys())[0]
+                plugins['failed_plugin'] = 'build' if first_failed == 'dockerbuild' else first_failed
+                plugins['exception'] = errors[first_failed].split("(")[0]
+            except (KeyError, IndexError):
+                pass
+
             if state == 'Complete':
                 # Count this towards throughput
                 tput = tputmodel.append(completion)
@@ -248,6 +263,13 @@ class Builds(object):
                         upload_size_mb = build_log.get('upload_size_mb', 'nan')
 
                     for plugin in plugins.keys():
+                        try:
+                            plugins[plugin] = durations[plugin]
+                        except KeyError:
+                            pass
+                        else:
+                            continue
+
                         try:
                             plugins[plugin] = build_log[plugin]
                         except KeyError:
@@ -313,20 +335,21 @@ class Builds(object):
         }
 
         
-def run(inputfile=None, instance=None):
+def run(inputfile=None, instance=None, download_logs=True):
     if inputfile is not None:
         with open(inputfile) as fp:
             builds = json.load(fp)
     else:
         builds = json.load(sys.stdin)
 
-    print(json.dumps(Builds(builds, instance).get_stats(), sort_keys=True, indent=2))
+    print(json.dumps(Builds(builds, instance, download_logs).get_stats(), sort_keys=True, indent=2))
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("--instance")
+    parser.add_argument("--skip-logs", action='store_true')
     parser.add_argument("inputfile", nargs='?', default=None)
     args = parser.parse_args()
 
-    run(args.inputfile, args.instance)
+    run(args.inputfile, args.instance, not args.skip_logs)

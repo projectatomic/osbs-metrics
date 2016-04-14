@@ -5,6 +5,7 @@ import os
 import re
 import subprocess
 import sys
+import argparse
 from time import ctime, gmtime, strftime, strptime
 
 
@@ -143,7 +144,8 @@ class BuildLog(object):
 
 
 class Builds(object):
-    def __init__(self, builds):
+    def __init__(self, builds, osbs_instance=None):
+        self.osbs_instance = osbs_instance
         self.builds = builds
         self.metrics_require_logs = int(os.environ.get('METRICS_REQUIRE_LOGS',
                                                        1))
@@ -154,9 +156,14 @@ class Builds(object):
 
         logfile = "{name}.log".format(name=name)
         if not os.access(logfile, os.R_OK):
-            cmd = ['osbs',
-                   'build-logs',
-                   name]
+            cmd = ['osbs']
+
+            if self.osbs_instance:
+                cmd += ['--instance',
+                        self.osbs_instance]
+
+            cmd += ['build-logs',
+                    name]
             with open(logfile, 'w') as fp:
                 print(' '.join(cmd))
                 p = subprocess.Popen(cmd, stdout=fp)
@@ -306,18 +313,20 @@ class Builds(object):
         }
 
         
-def run(inputfile=None):
+def run(inputfile=None, instance=None):
     if inputfile is not None:
         with open(inputfile) as fp:
             builds = json.load(fp)
     else:
         builds = json.load(sys.stdin)
 
-    print(json.dumps(Builds(builds).get_stats(), sort_keys=True, indent=2))
+    print(json.dumps(Builds(builds, instance).get_stats(), sort_keys=True, indent=2))
 
 
 if __name__ == '__main__':
-    try:
-        run(sys.argv[1])
-    except IndexError:
-        run()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--instance")
+    parser.add_argument("inputfile", nargs='?', default=None)
+    args = parser.parse_args()
+
+    run(args.inputfile, args.instance)

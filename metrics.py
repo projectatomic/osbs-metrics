@@ -136,7 +136,7 @@ class BuildLog(object):
             else:
                 buildfail = buildfail_re.search(log)
                 if buildfail:
-                    self.data['failed_plugin'] = 'build'
+                    self.data['failed_plugin'] = 'dockerbuild'
                     self.data['exception'] = ''
 
         with open(cache, 'w') as cf:
@@ -244,7 +244,7 @@ class Builds(object):
             try:
                 errors = plugins_metadata['errors']
                 first_failed = sorted(errors.keys())[0]
-                plugins['failed_plugin'] = 'build' if first_failed == 'dockerbuild' else first_failed
+                plugins['failed_plugin'] = first_failed
                 plugins['exception'] = errors[first_failed].split("(")[0]
             except (KeyError, IndexError):
                 pass

@@ -3,6 +3,7 @@ import subprocess
 import json
 import thread
 from time import sleep, time
+from tempfile import NamedTemporaryFile
 
 
 class Build(object):
@@ -68,26 +69,30 @@ class Build(object):
             zabbix_result['upload_size_mb'] = self.upload_size_mb
         print(zabbix_result)
 
-        for k, v in zabbix_result.iteritems():
-            _send_value_to_zabbix(zabbix_host, osbs_master, k, v)
+        with NamedTemporaryFile(delete=True) as temp_zabbix_data:
+            for k, v in zabbix_result.iteritems():
+                temp_zabbix_data.write("- %s %s\n" % (k, v))
+            temp_zabbix_data.flush()
 
-
-def _send_value_to_zabbix(zabbix_host, osbs_master, key, value):
-    cmd = 'zabbix_sender -z %s -p 10051 -s "%s" -k %s -o "%s"' % (
-          zabbix_host, osbs_master, key, value)
-    print("running %s:" % cmd)
-    try:
-        print(subprocess.check_output(cmd, shell=True))
-        # Don't spam zabbix with multiple duration sends
-        sleep(1)
-    except:
-        pass
+            cmd = 'zabbix_sender -z %s -p 10051 -s "%s" -i "%s"' % (
+                  zabbix_host, osbs_master, temp_zabbix_data.name)
+            print("running %s:" % cmd)
+            try:
+                print(subprocess.check_output(cmd, shell=True))
+            except:
+                pass
 
 
 def heartbeat(zabbix_host, osbs_master):
     while True:
-        _send_value_to_zabbix(zabbix_host, osbs_master, 'heartbeat', int(time()))
-        sleep(9)
+        cmd = 'zabbix_sender -z %s -p 10051 -s "%s" -k heartbeat -o "%s"' % (
+              zabbix_host, osbs_master, int(time()))
+        print("running %s:" % cmd)
+        try:
+            print(subprocess.check_output(cmd, shell=True))
+        except:
+            pass
+        sleep(10)
 
 
 def run(zabbix_host, osbs_master):

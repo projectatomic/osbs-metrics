@@ -61,12 +61,14 @@ class Build(object):
 
         zabbix_result = {
             'concurrent': concurrent_builds,
-            'state': binary_state
+            'state': binary_state,
         }
         if self.is_finished():
             for k, v in self.durations.iteritems():
                 zabbix_result[k] = v
             zabbix_result['upload_size_mb'] = self.upload_size_mb
+        zabbix_result['phase'] = self.state
+        zabbix_result['name'] = self.name
         print(zabbix_result)
 
         with NamedTemporaryFile(delete=True) as temp_zabbix_data:

@@ -1,7 +1,8 @@
 import argparse
 import subprocess
 import json
-from time import sleep
+import thread
+from time import sleep, time
 
 
 class Build(object):
@@ -68,19 +69,31 @@ class Build(object):
         print(zabbix_result)
 
         for k, v in zabbix_result.iteritems():
-            cmd = 'zabbix_sender -z %s -p 10051 -s "%s" -k %s -o "%s"' % (
-                  zabbix_host, osbs_master, k, v)
-            print("running %s:" % cmd)
-            try:
-                print(subprocess.check_output(cmd, shell=True))
-                # Don't spam zabbix with multiple duration sends
-                sleep(1)
-            except:
-                pass
+            _send_value_to_zabbix(zabbix_host, osbs_master, k, v)
+
+
+def _send_value_to_zabbix(zabbix_host, osbs_master, key, value):
+    cmd = 'zabbix_sender -z %s -p 10051 -s "%s" -k %s -o "%s"' % (
+          zabbix_host, osbs_master, key, value)
+    print("running %s:" % cmd)
+    try:
+        print(subprocess.check_output(cmd, shell=True))
+        # Don't spam zabbix with multiple duration sends
+        sleep(1)
+    except:
+        pass
+
+
+def heartbeat(zabbix_host, osbs_master):
+    while True:
+        _send_value_to_zabbix(zabbix_host, osbs_master, 'heartbeat', int(time()))
+        sleep(9)
 
 
 def run(zabbix_host, osbs_master):
     running_builds = set()
+
+    thread.start_new_thread(heartbeat, (zabbix_host, osbs_master, ))
 
     cmd = ["oc", "get", "builds", "--watch-only", "--no-headers=true"]
     process = subprocess.Popen(cmd, stdout=subprocess.PIPE)

@@ -102,25 +102,29 @@ def run(zabbix_host, osbs_master):
 
     thread.start_new_thread(heartbeat, (zabbix_host, osbs_master, ))
 
-    cmd = ["oc", "get", "builds", "--watch-only", "--no-headers=true"]
-    process = subprocess.Popen(cmd, stdout=subprocess.PIPE)
-    for line in iter(process.stdout.readline, ''):
-        line = ' '.join(line.split())
-        print(line)
-        line_arr = line.strip().split(' ')
-        if len(line_arr) < 4:
-            continue
+    while True:
+        cmd = ["oc", "get", "builds", "--watch-only", "--no-headers=true"]
+        process = subprocess.Popen(cmd, stdout=subprocess.PIPE)
+        for line in iter(process.stdout.readline, ''):
+            line = ' '.join(line.split())
+            print(line)
+            line_arr = line.strip().split(' ')
+            if len(line_arr) < 4:
+                continue
 
-        build_name = line_arr[0]
-        status = line_arr[3]
-        if status in ['Running', 'Complete', 'Failed', 'Cancelled'] or 'Error' in status:
-            if status == 'Running':
-                running_builds.add(build_name)
-            else:
-                running_builds.remove(build_name)
+            build_name = line_arr[0]
+            status = line_arr[3]
+            if status in ['Running', 'Complete', 'Failed', 'Cancelled'] or 'Error' in status:
+                if status == 'Running':
+                    running_builds.add(build_name)
+                else:
+                    try:
+                        running_builds.remove(build_name)
+                    except:
+                        pass
 
-            build = Build(build_name)
-            build.send_zabbix_notification(zabbix_host, osbs_master, len(running_builds))
+                build = Build(build_name)
+                build.send_zabbix_notification(zabbix_host, osbs_master, len(running_builds))
 
 
 if __name__ == '__main__':

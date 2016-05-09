@@ -113,6 +113,12 @@ def _send_zabbix_message(zabbix_host, osbs_master, key, value, print_command=Tru
         pass
 
 
+def filter_completed_builds(completed_builds):
+    # Remove all completed_builds which are not within this hour
+    now = int(time())
+    return {k: v for k, v in completed_builds.items() if (v - now) < 3600}
+
+
 def heartbeat(zabbix_host, osbs_master):
     while True:
         _send_zabbix_message(zabbix_host, osbs_master,
@@ -123,6 +129,7 @@ def heartbeat(zabbix_host, osbs_master):
 def run(zabbix_host, osbs_master):
     running_builds = set()
     pending = {}
+    completed_builds = {}
 
     thread.start_new_thread(heartbeat, (zabbix_host, osbs_master, ))
 
@@ -151,6 +158,11 @@ def run(zabbix_host, osbs_master):
                 else:
                     try:
                         running_builds.remove(build_name)
+                        if status != 'Cancelled':
+                            completed_builds[build_name] = int(time())
+                            completed_builds = filter_completed_builds(completed_builds)
+                            _send_zabbix_message(zabbix_host, osbs_master,
+                                                 "throughput", len(completed_builds))
                     except:
                         pass
 

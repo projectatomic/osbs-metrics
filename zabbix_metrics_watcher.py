@@ -71,6 +71,7 @@ class Build(object):
         zabbix_result['name'] = self.name
         print(zabbix_result)
 
+        # First send the real data for the build
         with NamedTemporaryFile(delete=True) as temp_zabbix_data:
             for k, v in zabbix_result.iteritems():
                 temp_zabbix_data.write("- %s %s\n" % (k, v))
@@ -84,6 +85,21 @@ class Build(object):
             except:
                 pass
 
+        sleep(10)
+        # Now we need to send zeros so the data from previous run won't pollute next runs
+        with NamedTemporaryFile(delete=True) as temp_zabbix_data:
+            for k, v in zabbix_result.iteritems():
+                if k != 'concurrent':
+                    temp_zabbix_data.write("- %s 0\n" % k)
+            temp_zabbix_data.flush()
+
+            cmd = 'zabbix_sender -z %s -p 10051 -s "%s" -i "%s"' % (
+                  zabbix_host, osbs_master, temp_zabbix_data.name)
+            print("running %s:" % cmd)
+            try:
+                print(subprocess.check_output(cmd, shell=True))
+            except:
+                pass
 
 def heartbeat(zabbix_host, osbs_master):
     while True:

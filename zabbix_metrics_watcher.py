@@ -105,9 +105,8 @@ def heartbeat(zabbix_host, osbs_master):
     while True:
         cmd = 'zabbix_sender -z %s -p 10051 -s "%s" -k heartbeat -o "%s"' % (
               zabbix_host, osbs_master, int(time()))
-        print("running %s:" % cmd)
         try:
-            print(subprocess.check_output(cmd, shell=True))
+            subprocess.check_output(cmd, shell=True)
         except:
             pass
         sleep(10)

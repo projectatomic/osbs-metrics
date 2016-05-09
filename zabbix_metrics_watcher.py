@@ -102,10 +102,11 @@ class Build(object):
                 pass
 
 
-def send_pending_time(zabbix_host, osbs_master, pending_duration):
-    cmd = 'zabbix_sender -z %s -p 10051 -s "%s" -k pending -o "%s"' % (
-          zabbix_host, osbs_master, pending_duration)
-    print(cmd)
+def _send_zabbix_message(zabbix_host, osbs_master, key, value, print_command=True):
+    cmd = 'zabbix_sender -z %s -p 10051 -s "%s" -k %s -o "%s"' % (
+          zabbix_host, osbs_master, key, value)
+    if print_command:
+        print(cmd)
     try:
         subprocess.check_output(cmd, shell=True)
     except:
@@ -114,12 +115,8 @@ def send_pending_time(zabbix_host, osbs_master, pending_duration):
 
 def heartbeat(zabbix_host, osbs_master):
     while True:
-        cmd = 'zabbix_sender -z %s -p 10051 -s "%s" -k heartbeat -o "%s"' % (
-              zabbix_host, osbs_master, int(time()))
-        try:
-            subprocess.check_output(cmd, shell=True)
-        except:
-            pass
+        _send_zabbix_message(zabbix_host, osbs_master,
+                             "heartbeat", int(time()), print_command=False)
         sleep(10)
 
 
@@ -149,7 +146,7 @@ def run(zabbix_host, osbs_master):
                     running_builds.add(build_name)
                     if build_name in pending.keys():
                         pending_duration = int(time()) - pending[build_name]
-                        send_pending_time(zabbix_host, osbs_master, pending_duration)
+                        _send_zabbix_message(zabbix_host, osbs_master, "pending", pending_duration)
                         del pending[build_name]
                 else:
                     try:

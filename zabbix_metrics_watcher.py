@@ -101,6 +101,17 @@ class Build(object):
             except:
                 pass
 
+
+def send_pending_time(zabbix_host, osbs_master, pending_duration):
+    cmd = 'zabbix_sender -z %s -p 10051 -s "%s" -k pending -o "%s"' % (
+          zabbix_host, osbs_master, pending_duration)
+    print(cmd)
+    try:
+        subprocess.check_output(cmd, shell=True)
+    except:
+        pass
+
+
 def heartbeat(zabbix_host, osbs_master):
     while True:
         cmd = 'zabbix_sender -z %s -p 10051 -s "%s" -k heartbeat -o "%s"' % (
@@ -114,6 +125,7 @@ def heartbeat(zabbix_host, osbs_master):
 
 def run(zabbix_host, osbs_master):
     running_builds = set()
+    pending = {}
 
     thread.start_new_thread(heartbeat, (zabbix_host, osbs_master, ))
 
@@ -129,9 +141,16 @@ def run(zabbix_host, osbs_master):
 
             build_name = line_arr[0]
             status = line_arr[3]
-            if status in ['Running', 'Complete', 'Failed', 'Cancelled'] or 'Error' in status:
-                if status == 'Running':
+            if status in ['Pending', 'Running', 'Complete', 'Failed', 'Cancelled'] or \
+                    'Error' in status:
+                if status == 'Pending':
+                    pending[build_name] = int(time())
+                elif status == 'Running':
                     running_builds.add(build_name)
+                    if build_name in pending.keys():
+                        pending_duration = int(time()) - pending[build_name]
+                        send_pending_time(zabbix_host, osbs_master, pending_duration)
+                        del pending[build_name]
                 else:
                     try:
                         running_builds.remove(build_name)

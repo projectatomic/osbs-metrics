@@ -67,6 +67,11 @@ class Build(object):
             for k, v in self.durations.iteritems():
                 zabbix_result[k] = v
             zabbix_result['upload_size_mb'] = self.upload_size_mb
+            try:
+                zabbix_result['pulp_push_speed'] =\
+                    self.upload_size_mb / float(zabbix_result['pulp_push'])
+            except:
+                pass
         zabbix_result['phase'] = self.state
         zabbix_result['name'] = self.name
         print(zabbix_result)
@@ -89,7 +94,7 @@ class Build(object):
         # Now we need to send zeros so the data from previous run won't pollute next runs
         with NamedTemporaryFile(delete=True) as temp_zabbix_data:
             for k, v in zabbix_result.iteritems():
-                if k != 'concurrent':
+                if k not in ['concurrent', 'pulp_push_speed']:
                     temp_zabbix_data.write("- %s 0\n" % k)
             temp_zabbix_data.flush()
 

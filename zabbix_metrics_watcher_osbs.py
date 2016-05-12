@@ -2,12 +2,25 @@ import argparse
 import subprocess
 import json
 import thread
+import logging
 from time import sleep, time
 from tempfile import NamedTemporaryFile
 
+logger = logging.getLogger('osbs-metrics')
+logger.handlers = []
+logger.setLevel(logging.DEBUG)
+ch = logging.StreamHandler()
+ch.setLevel(logging.DEBUG)
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+ch.setFormatter(formatter)
+logger.addHandler(ch)
+
 
 class Build(object):
-    def __init__(self, build_name, data=None):
+    def __init__(self, build_name, cmd_base, data=None):
+        logger.info("Creating build %s:%s" % (build_name, data))
+        logger.info("cmd base '%s'" % cmd_base)
+        self.cmd_base = cmd_base
         if not data:
             self.name = build_name
             self._data = {}
@@ -17,12 +30,15 @@ class Build(object):
             self.name = self._data['metadata']['name']
 
     def load_build_data(self):
-        cmd = ["osbs", "--output", "json", "get-build", self.name]
+        logger.info("Loading data for build %s", self.name)
+        cmd = self.cmd_base + ["get-build", self.name]
         try:
             stdout = subprocess.check_output(cmd)
-        except:
-            return
-        self._data = json.loads(stdout)
+            self._data = json.loads(stdout)
+        except subprocess.CalledProcessError as e:
+            logger.warn("Error while fetching build data: %s", repr(e))
+            logger.warn('Exit code: %s' % e.returncode)
+            logger.warn('Output: %s' % e.output)
 
     @property
     def state(self):
@@ -55,6 +71,7 @@ class Build(object):
             return {}
 
     def send_zabbix_notification(self, zabbix_host, osbs_master, concurrent_builds):
+        logger.info("Sending zabbix notification for build %s", self.name)
         binary_state = 0
         if self.is_finished():
             binary_state = 1
@@ -70,11 +87,11 @@ class Build(object):
             try:
                 zabbix_result['pulp_push_speed'] =\
                     self.upload_size_mb / float(zabbix_result['pulp_push'])
-            except:
-                pass
+            except Exception as e:
+                logger.warn('Error calculating push speed: %s' % repr(e))
         zabbix_result['phase'] = self.state
         zabbix_result['name'] = self.name
-        print(zabbix_result)
+        logger.info("Notification %s ", zabbix_result)
 
         # First send the real data for the build
         with NamedTemporaryFile(delete=True) as temp_zabbix_data:
@@ -84,14 +101,18 @@ class Build(object):
 
             cmd = 'zabbix_sender -z %s -p 10051 -s "%s" -i "%s"' % (
                   zabbix_host, osbs_master, temp_zabbix_data.name)
-            print("running %s:" % cmd)
+            logger.info("Sending build data: %s" % cmd)
             try:
-                print(subprocess.check_output(cmd, shell=True))
-            except:
-                pass
+                output = subprocess.check_output(cmd, shell=True)
+                logger.info('Output:\n%s' % output)
+            except subprocess.CalledProcessError as e:
+                logger.warn('Error while sending build data: %s' % repr(e))
+                logger.warn('Exit code: %s' % e.returncode)
+                logger.warn('Output: %s' % e.output)
 
         sleep(10)
         # Now we need to send zeros so the data from previous run won't pollute next runs
+        logger.info("Sending zero data")
         with NamedTemporaryFile(delete=True) as temp_zabbix_data:
             for k, v in zabbix_result.iteritems():
                 if k not in ['concurrent', 'pulp_push_speed']:
@@ -100,22 +121,28 @@ class Build(object):
 
             cmd = 'zabbix_sender -z %s -p 10051 -s "%s" -i "%s"' % (
                   zabbix_host, osbs_master, temp_zabbix_data.name)
-            print("running %s:" % cmd)
             try:
-                print(subprocess.check_output(cmd, shell=True))
-            except:
-                pass
+                output = subprocess.check_output(cmd, shell=True)
+                logger.info('Output:\n%s' % output)
+            except subprocess.CalledProcessError as e:
+                logger.warn('Error while sending build data: %s' % repr(e))
+                logger.warn('Exit code: %s' % e.returncode)
+                logger.warn('Output: %s' % e.output)
 
 
 def _send_zabbix_message(zabbix_host, osbs_master, key, value, print_command=True):
     cmd = 'zabbix_sender -z %s -p 10051 -s "%s" -k %s -o "%s"' % (
           zabbix_host, osbs_master, key, value)
     if print_command:
-        print(cmd)
+        logger.info("running %s:" % cmd)
     try:
-        subprocess.check_output(cmd, shell=True)
-    except:
-        pass
+        output = subprocess.check_output(cmd, shell=True)
+        if print_command:
+            logger.info('Output:\n%s' % output)
+    except subprocess.CalledProcessError as e:
+        logger.warn('Error while sending zabbix message: %s' % repr(e))
+        logger.warn('Exit code: %s' % e.returncode)
+        logger.warn('Output: %s' % e.output)
 
 
 def filter_completed_builds(completed_builds):
@@ -138,14 +165,16 @@ def run(zabbix_host, osbs_master, config, instance):
 
     thread.start_new_thread(heartbeat, (zabbix_host, osbs_master, ))
 
-    while True:
-        cmd = ["osbs", "--output", "json"]
-        if config:
-            cmd += ['--config', config]
-        if instance:
-            cmd += ['--instance', instance]
-        cmd += ["watch-builds"]
+    cmd_base = ["osbs", "--output", "json"]
+    if config:
+        cmd_base += ['--config', config]
+    if instance:
+        cmd_base += ['--instance', instance]
 
+    while True:
+        cmd = cmd_base + ["watch-builds"]
+
+        logger.info("Running %s", cmd)
         process = subprocess.Popen(cmd, stdout=subprocess.PIPE)
         for line in iter(process.stdout.readline, ''):
             try:
@@ -153,8 +182,8 @@ def run(zabbix_host, osbs_master, config, instance):
                 changeset = json_obj['changetype']
                 status = json_obj['status']
                 build_name = json_obj['name']
-            except:
-                print("bad json: %s" % line)
+            except Exception as e:
+                logger.warn("Error while parsing json '%s': %s", line, repr(e))
                 continue
             if status == 'Pending':
                 if build_name not in pending.keys():
@@ -172,10 +201,10 @@ def run(zabbix_host, osbs_master, config, instance):
                     completed_builds = filter_completed_builds(completed_builds)
                     _send_zabbix_message(zabbix_host, osbs_master,
                                          "throughput", len(completed_builds))
-                except:
-                    pass
+                except Exception as e:
+                    logger.warn("Error while removing completed build: %s", repr(e))
 
-            build = Build(build_name)
+            build = Build(build_name, cmd_base)
             build.send_zabbix_notification(zabbix_host, osbs_master, len(running_builds))
 
 
@@ -186,5 +215,6 @@ if __name__ == '__main__':
     parser.add_argument("--zabbix-host")
     parser.add_argument("--osbs-master")
     args = parser.parse_args()
+    logger.info("Starging osbs-watcher with args %s", args)
 
     run(args.zabbix_host, args.osbs_master, args.config, args.instance)

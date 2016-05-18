@@ -34,3 +34,24 @@ osbs --output=json list-builds | \
     graph-easy --as=dot | \
     dot -Tsvg > builds.svg
 ```
+
+```graph.py``` also has optional parameters:
+
+  * inputfile: read builds json from file
+  * pulp_base_url: use pulp API to get layer size
+      (should be used in case ```tar_metadata``` is inconsistent)
+
+zabbix
+=====
+
+Send build metadata to Zabbix synthetic host:
+
+```
+python zabbix_metrics_watcher.py \
+    --zabbix-host <zabbix host> \
+    --osbs-master <synthetic OSBS host on zabbix> \
+    --instance <instance name in osbs config>
+```
+
+For outdated metadata (atomic-reactor < 1.6.4) ```zabbix_metrics_watcher_oldmetadata.py```
+should be used

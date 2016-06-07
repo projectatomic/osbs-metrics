@@ -8,6 +8,9 @@ import pandas as pd
 import sys
 
 
+SINCE_DATE = datetime.date(2016, 6, 6)
+
+
 def MyHistogram(data, bins, **kwargs):
     # Work around bokeh.charts.Histogram bug
     # https://github.com/bokeh/bokeh/issues/3875
@@ -165,14 +168,15 @@ class Charts(object):
 
     def run(self):
         def since(x):
-            return x > datetime.date(2016, 3, 16)
+            return x > SINCE_DATE
 
         def until(x):
             return ((x > datetime.datetime(2016, 2, 26, 20, 0)) &
-                    (x <= datetime.date(2016, 3, 16)))
+                    (x <= SINCE_DATE))
 
-        time_charts = [self.get_time_charts(until, ' (Feb 26 - Mar 16)'),
-                       self.get_time_charts(since, ' (since Mar 16)')]
+        since_str = SINCE_DATE.strftime('%b %d')
+        time_charts = [self.get_time_charts(until, ' (Feb 26 - {0})'.format(since_str)),
+                       self.get_time_charts(since, ' (since {0})'.format(since_str))]
         time_charts = [charts for charts in time_charts if charts]
         p = [hplot(*x) for x in zip(*time_charts)]
         charts = vplot(*p)

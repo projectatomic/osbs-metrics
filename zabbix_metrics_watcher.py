@@ -3,6 +3,7 @@ import subprocess
 import json
 import thread
 import logging
+import dateutil.parser
 from time import sleep, time
 from tempfile import NamedTemporaryFile
 
@@ -70,6 +71,30 @@ class Build(object):
         except:
             return {}
 
+    @property
+    def created_time(self):
+        try:
+            timestamp = self._data['metadata']['creationTimestamp']
+            return dateutil.parser.parse(timestamp)
+        except:
+            return None
+
+    @property
+    def started_time(self):
+        try:
+            timestamp = self._data['metadata']['startTimestamp']
+            return dateutil.parser.parse(timestamp)
+        except:
+            return None
+
+    @property
+    def completed_time(self):
+        try:
+            timestamp = self._data['metadata']['completionTimestamp']
+            return dateutil.parser.parse(timestamp)
+        except:
+            return None
+
     def send_zabbix_notification(self, zabbix_host, osbs_master, concurrent_builds):
         logger.info("Sending zabbix notification for build %s", self.name)
         binary_state = 0
@@ -85,8 +110,12 @@ class Build(object):
                 zabbix_result[k] = v
             zabbix_result['upload_size_mb'] = self.upload_size_mb
             try:
-                zabbix_result['pulp_push_speed'] =\
-                    self.upload_size_mb / float(zabbix_result['pulp_push'])
+                if 'pulp_push' in zabbix_result.keys():
+                    zabbix_result['pulp_push_speed'] =\
+                        self.upload_size_mb / float(zabbix_result['pulp_push'])
+                elif 'pulp_sync' in zabbix_result.keys():
+                    zabbix_result['pulp_push_speed'] =\
+                        self.upload_size_mb / float(zabbix_result['pulp_sync'])
             except Exception as e:
                 logger.warn('Error calculating push speed: %s' % repr(e))
         zabbix_result['phase'] = self.state
@@ -115,7 +144,7 @@ class Build(object):
         logger.info("Sending zero data")
         with NamedTemporaryFile(delete=True) as temp_zabbix_data:
             for k, v in zabbix_result.iteritems():
-                if k not in ['concurrent', 'pulp_push_speed']:
+                if k not in ['concurrent', 'pulp_push_speed', 'name', 'phase', 'failed_plugin', 'exception']:
                     temp_zabbix_data.write("- %s 0\n" % k)
             temp_zabbix_data.flush()
 
@@ -148,7 +177,7 @@ def _send_zabbix_message(zabbix_host, osbs_master, key, value, print_command=Tru
 def filter_completed_builds(completed_builds):
     # Remove all completed_builds which are not within this hour
     now = int(time())
-    return {k: v for k, v in completed_builds.items() if (v - now) < 3600}
+    return {k: v for k, v in completed_builds.items() if (now - v) < 3600}
 
 
 def heartbeat(zabbix_host, osbs_master):
@@ -185,28 +214,29 @@ def run(zabbix_host, osbs_master, config, instance):
             except Exception as e:
                 logger.warn("Error while parsing json '%s': %s", line, repr(e))
                 continue
-            if status == 'Pending':
-                if build_name not in pending.keys():
-                    pending[build_name] = int(time())
-            elif status == 'Running' and changeset == 'modified':
-                running_builds.add(build_name)
-                if build_name in pending.keys():
-                    pending_duration = int(time()) - pending[build_name]
-                    _send_zabbix_message(zabbix_host, osbs_master, "pending", pending_duration)
-                    del pending[build_name]
-            elif status == 'Running' and changeset == 'deleted':
-                try:
-                    running_builds.remove(build_name)
-                    completed_builds[build_name] = int(time())
-                    completed_builds = filter_completed_builds(completed_builds)
-                    _send_zabbix_message(zabbix_host, osbs_master,
-                                         "throughput", len(completed_builds))
-                except Exception as e:
-                    logger.warn("Error while removing completed build: %s", repr(e))
 
             build = Build(build_name, cmd_base)
+            if status == 'Running' and changeset in ['added', 'modified']:
+                if build_name in pending.keys():
+                    pending_duration = build.started_time - build.created_time
+                    _send_zabbix_message(zabbix_host, osbs_master, "pending", pending_duration)
+                    running_builds.add(build_name)
+            elif status in ['Running', 'Complete', 'Failed'] and changeset == 'deleted':
+                try:
+                    running_builds.remove(build_name)
+                except Exception as e:
+                    logger.warn("Error while removing running build: %s", repr(e))
+
             build.send_zabbix_notification(zabbix_host, osbs_master, len(running_builds))
 
+            if build.state == 'Complete':
+                try:
+                    completed_builds[build_name] = build.completed_time
+                    new_completed_builds = filter_completed_builds(completed_builds)
+                    _send_zabbix_message(zabbix_host, osbs_master,
+                                         "throughput", len(new_completed_builds))
+                except Exception as e:
+                    logger.warn("Error while removing completed build: %s", repr(e))
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()

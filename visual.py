@@ -180,7 +180,7 @@ class Charts(object):
         time_charts = [charts for charts in time_charts if charts]
         p = [hplot(*x) for x in zip(*time_charts)]
         charts = vplot(*p)
-        output_file('metrics.html')
+        output_file('metrics.html', mode='inline')
         show(charts)
 
 

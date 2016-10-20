@@ -76,99 +76,10 @@ class MissingLog(Exception):
     pass
 
 
-class BuildLog(object):
-    def __init__(self, logfile):
-        self.logfile = logfile
-        self.data = None
-        self._trawl()
-
-    def _trawl(self):
-        if self.data is not None:
-            return
-
-        cache = self.logfile + '.cache'
-        try:
-            with open(cache) as cf:
-                self.data = json.load(cf)
-                return
-        except (IOError, ValueError):
-            pass
-
-        self.data = {
-            'upload_size_mb': 'nan',
-        }
-        name_re = re.compile(r'selflink.: u./oapi/v1/namespaces/default/builds/([^,]*).,')
-        size_re = re.compile(r' - dockpulp - INFO - uploading a (.*)M image')
-        plugin_re = re.compile(r'([0-9 :-]*),[0-9]+ - atomic_reactor.plugin - DEBUG - running plugin \'(.*)\'')
-        error_re = re.compile(r'ERROR - .*plugin \'(.*)\' raised an exception: ([^(]*)')
-        image_re = re.compile(r'pulp_push - INFO - image names: \[.*\'([^\']*):latest')
-        buildfail_re = re.compile(r'INFO - build was unsuccess?ful')
-        with open(self.logfile) as lf:
-            log = lf.read()
-            if len(log) < 50:
-                raise MissingLog
-
-            name = name_re.search(log)
-            if name:
-                self.data['name'] = name.groups()[0]
-
-            size = size_re.search(log)
-            if size:
-                self.data['upload_size_mb'] = size.groups()[0]
-
-            image = image_re.search(log)
-            if image:
-                self.data['image'] = image.groups()[0]
-
-            last_plugin = None
-            plugins = plugin_re.findall(log)
-            for timestamp, plugin_name in plugins:
-                t = timegm(strptime(timestamp, "%Y-%m-%d %H:%M:%S"))
-                if last_plugin is not None:
-                    self.data[last_plugin[1]] = t - last_plugin[0]
-
-                last_plugin = (t, plugin_name)
-
-            error = error_re.search(log)
-            if error:
-                (self.data['failed_plugin'],
-                 self.data['exception']) = error.groups()
-            else:
-                buildfail = buildfail_re.search(log)
-                if buildfail:
-                    self.data['failed_plugin'] = 'dockerbuild'
-                    self.data['exception'] = ''
-
-        with open(cache, 'w') as cf:
-            json.dump(self.data, cf, indent=2)
-
-
 class Builds(object):
-    def __init__(self, builds, osbs_instance=None, metrics_require_logs=True):
+    def __init__(self, builds, osbs_instance=None):
         self.osbs_instance = osbs_instance
         self.builds = builds
-        self.metrics_require_logs = metrics_require_logs
-
-    def fetch_log(self, name):
-        if not self.metrics_require_logs:
-            raise MissingLog
-
-        logfile = "{name}.log".format(name=name)
-        if not os.access(logfile, os.R_OK):
-            cmd = ['osbs']
-
-            if self.osbs_instance:
-                cmd += ['--instance',
-                        self.osbs_instance]
-
-            cmd += ['build-logs',
-                    name]
-            with open(logfile, 'w') as fp:
-                print(' '.join(cmd))
-                p = subprocess.Popen(cmd, stdout=fp)
-                p.communicate()
-
-        return BuildLog(logfile).data
 
     def get_stats(self):
         builds_examined = 0
@@ -209,16 +120,11 @@ class Builds(object):
 
             start = rfc3339_time(startTimestamp)
             pending = start - creation
-            build_log = {}
             if pending < 0:
                 which = 'archived'
                 pending = upload_size_mb = 'nan'
             else:
                 which = 'current'
-                try:
-                    build_log = self.fetch_log(name)
-                except MissingLog:
-                    missing.append(name)
 
             duration = build['status'].get('duration', 0) / 1000000000
             plugins = {name: 'nan'
@@ -259,8 +165,6 @@ class Builds(object):
                     if tar_metadata:
                         md = json.loads(tar_metadata)
                         upload_size_mb = md['size'] / (1024 * 1024)
-                    else:
-                        upload_size_mb = build_log.get('upload_size_mb', 'nan')
 
                     for plugin in plugins.keys():
                         try:
@@ -271,9 +175,6 @@ class Builds(object):
                             continue
 
                         try:
-                            plugins[plugin] = build_log[plugin]
-                        except KeyError:
-                            pass
 
                 metrics = Metrics(name=name,
                                   completion=timestamp,
@@ -335,21 +236,20 @@ class Builds(object):
         }
 
         
-def run(inputfile=None, instance=None, download_logs=True):
+def run(inputfile=None, instance=None):
     if inputfile is not None:
         with open(inputfile) as fp:
             builds = json.load(fp)
     else:
         builds = json.load(sys.stdin)
 
-    print(json.dumps(Builds(builds, instance, download_logs).get_stats(), sort_keys=True, indent=2))
+    print(json.dumps(Builds(builds, instance).get_stats(), sort_keys=True, indent=2))
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("--instance")
-    parser.add_argument("--skip-logs", action='store_true')
     parser.add_argument("inputfile", nargs='?', default=None)
     args = parser.parse_args()
 
-    run(args.inputfile, args.instance, not args.skip_logs)
+    run(args.inputfile, args.instance)

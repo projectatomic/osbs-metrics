@@ -11,9 +11,6 @@ osbs --output=json list-builds > list-builds.json
 python ./metrics.py list-builds.json
 ```
 
-If you want to skip metrics that require logs (plugin-level timings
-and failure reasons), set METRICS_REQUIRE_LOGS=0 in the environment.
-
 visual
 ======
 

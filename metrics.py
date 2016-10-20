@@ -149,7 +149,9 @@ class Builds(object):
                 errors = plugins_metadata['errors']
                 first_failed = sorted(errors.keys())[0]
                 plugins['failed_plugin'] = first_failed
-                plugins['exception'] = errors[first_failed].split("(")[0].replace(',', ' ')
+                exception_text = errors[first_failed].split("(")[0]
+                # Make sure quotes and commas are escaped
+                plugins['exception'] = json.dumps(exception_text)
             except (KeyError, IndexError):
                 pass
 

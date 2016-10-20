@@ -133,12 +133,10 @@ class Builds(object):
                                     'dockerfile_content',
                                     'squash',
                                     'compress',
-                                    'pulp_push']}
-            plugins.update({name: build_log.get(name, '')
-                            for name in ['image',
-                                         'failed_plugin',
-                                         'exception']})
-
+                                    'pulp_push',
+                                    'image',
+                                    'failed_plugin',
+                                    'exception']}
 
             try:
                 plugins_metadata = json.loads(build['metadata']['annotations']['plugins-metadata'])
@@ -174,7 +172,14 @@ class Builds(object):
                         else:
                             continue
 
+                    repositories = annotations.get('repositories')
+                    if repositories:
+                        repositories_json = json.loads(repositories)
                         try:
+                            image_name = '/'.join(repositories_json['unique'][0].split('/')[1:])
+                            plugins['image'] = image_name.split(':')[0]
+                        except IndexError:
+                            plugins['image'] = ''
 
                 metrics = Metrics(name=name,
                                   completion=timestamp,

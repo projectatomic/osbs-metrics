@@ -221,7 +221,8 @@ def run(zabbix_host, osbs_master, config, instance):
                     pending_duration = build.started_time - build.created_time
                     _send_zabbix_message(zabbix_host, osbs_master, "pending", pending_duration)
                     running_builds.add(build_name)
-            elif status in ['Running', 'Complete', 'Failed'] and changeset == 'deleted':
+            elif (status in ['Running'] and changeset == 'deleted')\
+              or (status in ['Complete', 'Failed', 'Cancelled']):
                 try:
                     running_builds.remove(build_name)
                 except Exception as e:

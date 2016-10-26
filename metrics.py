@@ -150,8 +150,8 @@ class Builds(object):
                 first_failed = sorted(errors.keys())[0]
                 plugins['failed_plugin'] = first_failed
                 exception_text = errors[first_failed].split("(")[0]
-                # Make sure quotes and commas are escaped
-                plugins['exception'] = json.dumps(exception_text)
+                # Make sure commas are escaped and double quotes are replaced
+                plugins['exception'] = json.dumps(exception_text.replace('"', "'"))
             except (KeyError, IndexError):
                 pass
 

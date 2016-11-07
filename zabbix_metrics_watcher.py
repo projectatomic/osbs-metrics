@@ -1,10 +1,10 @@
 import argparse
 import subprocess
 import json
-import thread
 import logging
 import dateutil.parser
-from time import sleep, time
+import datetime
+from time import sleep
 from tempfile import NamedTemporaryFile
 
 logger = logging.getLogger('osbs-metrics')
@@ -90,7 +90,7 @@ class Build(object):
     @property
     def completed_time(self):
         try:
-            timestamp = self._data['metadata']['completionTimestamp']
+            timestamp = self._data['status']['completionTimestamp']
             return dateutil.parser.parse(timestamp)
         except:
             return None
@@ -139,7 +139,7 @@ class Build(object):
                 logger.warn('Exit code: %s' % e.returncode)
                 logger.warn('Output: %s' % e.output)
 
-        sleep(10)
+        sleep(1)
         # Now we need to send zeros so the data from previous run won't pollute next runs
         logger.info("Sending zero data")
         with NamedTemporaryFile(delete=True) as temp_zabbix_data:
@@ -176,8 +176,6 @@ def _send_zabbix_message(zabbix_host, osbs_master, key, value, print_command=Tru
 
 def filter_completed_builds(completed_builds):
     # Remove all completed_builds which are not within this hour
-    now = int(time())
-    return {k: v for k, v in completed_builds.items() if (now - v) < 3600}
 
 
 def heartbeat(zabbix_host, osbs_master):
@@ -185,11 +183,13 @@ def heartbeat(zabbix_host, osbs_master):
         _send_zabbix_message(zabbix_host, osbs_master,
                              "heartbeat", int(time()), print_command=False)
         sleep(10)
+    return {k: v for k, v in completed_builds.items()
+            if (datetime.datetime.utcnow() - v.replace(tzinfo=None)).total_seconds() < 3600}
 
 
 def run(zabbix_host, osbs_master, config, instance):
     running_builds = set()
-    pending = {}
+    pending = set()
     completed_builds = {}
 
     thread.start_new_thread(heartbeat, (zabbix_host, osbs_master, ))
@@ -216,10 +216,13 @@ def run(zabbix_host, osbs_master, config, instance):
                 continue
 
             build = Build(build_name, cmd_base)
-            if status == 'Running' and changeset in ['added', 'modified']:
-                if build_name in pending.keys():
-                    pending_duration = build.started_time - build.created_time
+            if status == 'Pending':
+                pending.add(build_name)
+            elif status == 'Running' and changeset in ['added', 'modified']:
+                if build_name in pending:
+                    pending_duration = int((build.started_time - build.created_time).total_seconds())
                     _send_zabbix_message(zabbix_host, osbs_master, "pending", pending_duration)
+                    logger.info("Pending duration: %s", pending_duration)
                     running_builds.add(build_name)
             elif (status in ['Running'] and changeset == 'deleted')\
               or (status in ['Complete', 'Failed', 'Cancelled']):

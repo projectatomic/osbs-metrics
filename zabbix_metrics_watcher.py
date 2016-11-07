@@ -176,13 +176,6 @@ def _send_zabbix_message(zabbix_host, osbs_master, key, value, print_command=Tru
 
 def filter_completed_builds(completed_builds):
     # Remove all completed_builds which are not within this hour
-
-
-def heartbeat(zabbix_host, osbs_master):
-    while True:
-        _send_zabbix_message(zabbix_host, osbs_master,
-                             "heartbeat", int(time()), print_command=False)
-        sleep(10)
     return {k: v for k, v in completed_builds.items()
             if (datetime.datetime.utcnow() - v.replace(tzinfo=None)).total_seconds() < 3600}
 
@@ -191,8 +184,6 @@ def run(zabbix_host, osbs_master, config, instance):
     running_builds = set()
     pending = set()
     completed_builds = {}
-
-    thread.start_new_thread(heartbeat, (zabbix_host, osbs_master, ))
 
     cmd_base = ["osbs", "--output", "json"]
     if config:

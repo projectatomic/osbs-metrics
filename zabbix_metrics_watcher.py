@@ -4,6 +4,7 @@ import json
 import logging
 import dateutil.parser
 import datetime
+from dateutil.tz import tzutc
 from time import sleep
 from tempfile import NamedTemporaryFile
 
@@ -182,7 +183,7 @@ def _send_zabbix_message(zabbix_host, osbs_master, key, value, print_command=Tru
 def filter_completed_builds(completed_builds):
     # Remove all completed_builds which are not within this hour
     return {k: v for k, v in completed_builds.items()
-            if (datetime.datetime.utcnow() - v.replace(tzinfo=None)).total_seconds() < 3600}
+            if (datetime.datetime.now(tzutc()) - v).total_seconds() < 3600}
 
 
 def run(zabbix_host, osbs_master, config, instance):

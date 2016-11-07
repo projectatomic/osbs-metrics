@@ -19,8 +19,7 @@ logger.addHandler(ch)
 
 class Build(object):
     def __init__(self, build_name, cmd_base, data=None):
-        logger.info("Creating build %s:%s" % (build_name, data))
-        logger.info("cmd base '%s'" % cmd_base)
+        logger.info("Creating build %s:%s", build_name, data)
         self.cmd_base = cmd_base
         if not data:
             self.name = build_name
@@ -31,15 +30,15 @@ class Build(object):
             self.name = self._data['metadata']['name']
 
     def load_build_data(self):
-        logger.info("Loading data for build %s", self.name)
         cmd = self.cmd_base + ["get-build", self.name]
         try:
             stdout = subprocess.check_output(cmd)
             self._data = json.loads(stdout)
+            logger.info("build data loaded")
         except subprocess.CalledProcessError as e:
-            logger.warn("Error while fetching build data: %s", repr(e))
-            logger.warn('Exit code: %s' % e.returncode)
-            logger.warn('Output: %s' % e.output)
+            logger.warn("Error while fetching build data: %r", e)
+            logger.warn('Exit code: %s', e.returncode)
+            logger.warn('Output: %s',  e.output)
 
     @property
     def state(self):
@@ -52,7 +51,8 @@ class Build(object):
     def duration(self):
         try:
             return int(self._data['status']['duration'])/1000000000
-        except:
+        except Exception as e:
+            logger.warn('Error duration: %r', e)
             return ""
 
     @property
@@ -60,7 +60,8 @@ class Build(object):
         try:
             tar_metadata = json.loads(self._data['metadata']['annotations']['tar_metadata'])
             return int(tar_metadata['size']) / (1024 * 1024)
-        except:
+        except Exception as e:
+            logger.warn('Error upload_size_mb: %r', e)
             return 0
 
     @property
@@ -68,7 +69,8 @@ class Build(object):
         try:
             metadata = json.loads(self._data['metadata']['annotations']['plugins-metadata'])
             return metadata['durations']
-        except:
+        except Exception as e:
+            logger.warn('Error durations: %r', e)
             return {}
 
     @property
@@ -76,15 +78,17 @@ class Build(object):
         try:
             timestamp = self._data['metadata']['creationTimestamp']
             return dateutil.parser.parse(timestamp)
-        except:
+        except Exception as e:
+            logger.warn('Error created_time: %r', e)
             return None
 
     @property
     def started_time(self):
         try:
-            timestamp = self._data['metadata']['startTimestamp']
+            timestamp = self._data['status']['startTimestamp']
             return dateutil.parser.parse(timestamp)
-        except:
+        except Exception as e:
+            logger.warn('Error started_time: %r', e)
             return None
 
     @property
@@ -92,7 +96,8 @@ class Build(object):
         try:
             timestamp = self._data['status']['completionTimestamp']
             return dateutil.parser.parse(timestamp)
-        except:
+        except Exception as e:
+            logger.warn('Error completed_time: %r', e)
             return None
 
     def send_zabbix_notification(self, zabbix_host, osbs_master, concurrent_builds):
@@ -117,7 +122,7 @@ class Build(object):
                     zabbix_result['pulp_push_speed'] =\
                         self.upload_size_mb / float(zabbix_result['pulp_sync'])
             except Exception as e:
-                logger.warn('Error calculating push speed: %s' % repr(e))
+                logger.warn('Error calculating push speed: %s', e)
         zabbix_result['phase'] = self.state
         zabbix_result['name'] = self.name
         logger.info("Notification %s ", zabbix_result)
@@ -130,14 +135,14 @@ class Build(object):
 
             cmd = 'zabbix_sender -z %s -p 10051 -s "%s" -i "%s"' % (
                   zabbix_host, osbs_master, temp_zabbix_data.name)
-            logger.info("Sending build data: %s" % cmd)
+            logger.info("Sending build data: %s", cmd)
             try:
                 output = subprocess.check_output(cmd, shell=True)
-                logger.info('Output:\n%s' % output)
+                logger.info('Output:\n%s', output)
             except subprocess.CalledProcessError as e:
-                logger.warn('Error while sending build data: %s' % repr(e))
-                logger.warn('Exit code: %s' % e.returncode)
-                logger.warn('Output: %s' % e.output)
+                logger.warn('Error while sending build data: %s', e)
+                logger.warn('Exit code: %s', e.returncode)
+                logger.warn('Output: %s', e.output)
 
         sleep(1)
         # Now we need to send zeros so the data from previous run won't pollute next runs
@@ -152,26 +157,26 @@ class Build(object):
                   zabbix_host, osbs_master, temp_zabbix_data.name)
             try:
                 output = subprocess.check_output(cmd, shell=True)
-                logger.info('Output:\n%s' % output)
+                logger.info('Output:\n%s', output)
             except subprocess.CalledProcessError as e:
-                logger.warn('Error while sending build data: %s' % repr(e))
-                logger.warn('Exit code: %s' % e.returncode)
-                logger.warn('Output: %s' % e.output)
+                logger.warn('Error while sending build data: %r', e)
+                logger.warn('Exit code: %s', e.returncode)
+                logger.warn('Output: %s', e.output)
 
 
 def _send_zabbix_message(zabbix_host, osbs_master, key, value, print_command=True):
     cmd = 'zabbix_sender -z %s -p 10051 -s "%s" -k %s -o "%s"' % (
           zabbix_host, osbs_master, key, value)
     if print_command:
-        logger.info("running %s:" % cmd)
+        logger.info("running %s:", cmd)
     try:
         output = subprocess.check_output(cmd, shell=True)
         if print_command:
-            logger.info('Output:\n%s' % output)
+            logger.info('Output:\n%s', output)
     except subprocess.CalledProcessError as e:
-        logger.warn('Error while sending zabbix message: %s' % repr(e))
-        logger.warn('Exit code: %s' % e.returncode)
-        logger.warn('Output: %s' % e.output)
+        logger.warn('Error while sending zabbix message: %r', e)
+        logger.warn('Exit code: %s', e.returncode)
+        logger.warn('Output: %s', e.output)
 
 
 def filter_completed_builds(completed_builds):
@@ -203,9 +208,10 @@ def run(zabbix_host, osbs_master, config, instance):
                 status = json_obj['status']
                 build_name = json_obj['name']
             except Exception as e:
-                logger.warn("Error while parsing json '%s': %s", line, repr(e))
+                logger.warn("Error while parsing json '%s': %r", line, e)
                 continue
 
+            logger.info("Found build %s in %s", build_name, status)
             build = Build(build_name, cmd_base)
             if status == 'Pending':
                 pending.add(build_name)
@@ -220,18 +226,20 @@ def run(zabbix_host, osbs_master, config, instance):
                 try:
                     running_builds.remove(build_name)
                 except Exception as e:
-                    logger.warn("Error while removing running build: %s", repr(e))
+                    logger.warn("Error while removing running build: %r", e)
 
             build.send_zabbix_notification(zabbix_host, osbs_master, len(running_builds))
 
             if build.state == 'Complete':
                 try:
                     completed_builds[build_name] = build.completed_time
+                    logger.info("Completed time: %s", completed_builds)
                     new_completed_builds = filter_completed_builds(completed_builds)
                     _send_zabbix_message(zabbix_host, osbs_master,
                                          "throughput", len(new_completed_builds))
+                    logger.info("Throughput: %s", len(new_completed_builds))
                 except Exception as e:
-                    logger.warn("Error while removing completed build: %s", repr(e))
+                    logger.warn("Error while removing completed build: %r", e)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()

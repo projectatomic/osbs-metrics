@@ -228,6 +228,8 @@ def run(zabbix_host, osbs_master, config, instance):
                     running_builds.remove(build_name)
                 except Exception as e:
                     logger.warn("Error while removing running build: %r", e)
+            else:
+                logging.warn("Unhandled status: %r", status)
 
             build.send_zabbix_notification(zabbix_host, osbs_master, len(running_builds))
 
@@ -241,6 +243,9 @@ def run(zabbix_host, osbs_master, config, instance):
                     logger.info("Throughput: %s", len(new_completed_builds))
                 except Exception as e:
                     logger.warn("Error while removing completed build: %r", e)
+
+            for running_build in running_builds:
+                logger.debug("still running: %s", running_build.name)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()

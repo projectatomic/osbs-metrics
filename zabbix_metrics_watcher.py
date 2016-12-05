@@ -249,6 +249,6 @@ if __name__ == '__main__':
     parser.add_argument("--zabbix-host")
     parser.add_argument("--osbs-master")
     args = parser.parse_args()
-    logger.info("Starging osbs-watcher with args %s", args)
+    logger.info("Starting osbs-watcher with args %s", args)
 
     run(args.zabbix_host, args.osbs_master, args.config, args.instance)

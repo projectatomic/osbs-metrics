@@ -245,7 +245,7 @@ def run(zabbix_host, osbs_master, config, instance):
                     logger.warn("Error while removing completed build: %r", e)
 
             for running_build in running_builds:
-                logger.debug("still running: %s", running_build.name)
+                logger.debug("still running: %s", running_build)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()

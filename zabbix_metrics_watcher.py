@@ -17,6 +17,24 @@ formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(messag
 ch.setFormatter(formatter)
 logger.addHandler(ch)
 
+"""
+Check the output of 'osbs watch-builds' and send messages to zabbix
+
+Zabbix Items (generally sent when a build changes a state):
+ * new_duration - maximum time any current build spent in New state
+ * pending - amount of time last build has spent in Pending state
+ * throughput - number of build which successfully completed during last hour
+ * concurrent - number of running builds when some build has changed state
+ * name - build name
+ * phase - name of the phase this build is in
+ * state - 0 for any in progress state, 1 for complete (Complete / Failed / Cancelled)
+ * <atomic-reactor plugin name> - how long did each plugin took to complete
+ * pulp_push_speed - average speed of pulp push (or pulp_sync if pulp_push wasn't performed)
+ * upload_size_mb - size of the image uploaded to koji
+
+The data are stored in a plain table and can be linked together by a unique timestamp only
+"""
+
 
 class Build(object):
     def __init__(self, build_name, cmd_base, data=None):
@@ -188,6 +206,7 @@ def filter_completed_builds(completed_builds):
 
 def run(zabbix_host, osbs_master, config, instance):
     running_builds = set()
+    builds_in_new = {}
     pending = set()
     completed_builds = {}
 
@@ -214,22 +233,47 @@ def run(zabbix_host, osbs_master, config, instance):
 
             logger.info("Found build %s in %s", build_name, status)
             build = Build(build_name, cmd_base)
-            if status == 'Pending':
+            if status == 'New':
+                now = datetime.datetime.now()
+                builds_in_new.setdefault(build_name, now)
+
+            elif status != 'New':
+                try:
+                    del builds_in_new[build_name]
+
+                    # We should reset zabbix item only when the last build in New
+                    # has changed its state
+                    if not builds_in_new:
+                        _send_zabbix_message(zabbix_host, osbs_master, "new_duration", 0)
+                except KeyError:
+                    pass
+
+            elif status == 'Pending':
                 pending.add(build_name)
+
             elif status == 'Running' and changeset in ['added', 'modified']:
                 if build_name in pending:
                     pending_duration = int((build.started_time - build.created_time).total_seconds())
                     _send_zabbix_message(zabbix_host, osbs_master, "pending", pending_duration)
                     logger.info("Pending duration: %s", pending_duration)
                     running_builds.add(build_name)
-            elif (status in ['Running'] and changeset == 'deleted')\
+                pending.discard(build_name)
+
+            elif (status == 'Running' and changeset == 'deleted')\
               or (status in ['Complete', 'Failed', 'Cancelled']):
-                try:
-                    running_builds.remove(build_name)
-                except Exception as e:
-                    logger.warn("Error while removing running build: %r", e)
+                pending.discard(build_name)
+                running_builds.discard(build_name)
+
             else:
                 logging.warn("Unhandled status: %r", status)
+
+            spent_in_new = [(now - start).total_seconds() for start in builds_in_new.values()]
+            if spent_in_new:
+                max_spent_in_new = max(spent_in_new)
+                logger.info("%s build(s) are in New for, longest: %s sec",
+                            len(builds_in_new), max_spent_in_new)
+                _send_zabbix_message(zabbix_host, osbs_master,
+                                     "new_duration", max_spent_in_new)
 
             build.send_zabbix_notification(zabbix_host, osbs_master, len(running_builds))
 

@@ -231,7 +231,7 @@ def run(zabbix_host, osbs_master, config, instance):
                 logger.warn("Error while parsing json '%s': %r", line, e)
                 continue
 
-            logger.info("Found build %s in %s", build_name, status)
+            logger.info("Found build %s in %s, changeset %s", build_name, status, changeset)
             build = Build(build_name, cmd_base)
             if status == 'New':
                 now = datetime.datetime.now()
@@ -260,7 +260,7 @@ def run(zabbix_host, osbs_master, config, instance):
                 pending.discard(build_name)
 
             elif (status == 'Running' and changeset == 'deleted')\
-              or (status in ['Complete', 'Failed', 'Cancelled']):
+                    or (status in ['Complete', 'Failed', 'Cancelled']):
                 pending.discard(build_name)
                 running_builds.discard(build_name)
 
@@ -290,6 +290,7 @@ def run(zabbix_host, osbs_master, config, instance):
 
             for running_build in running_builds:
                 logger.debug("still running: %s", running_build)
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()

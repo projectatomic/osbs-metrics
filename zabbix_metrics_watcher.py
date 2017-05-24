@@ -237,7 +237,7 @@ def run(zabbix_host, osbs_master, config, instance):
                 now = datetime.datetime.now()
                 builds_in_new.setdefault(build_name, now)
 
-            elif status != 'New':
+            else:
                 try:
                     del builds_in_new[build_name]
 
@@ -248,7 +248,7 @@ def run(zabbix_host, osbs_master, config, instance):
                 except KeyError:
                     pass
 
-            elif status == 'Pending':
+            if status == 'Pending':
                 pending.add(build_name)
 
             elif status == 'Running' and changeset in ['added', 'modified']:

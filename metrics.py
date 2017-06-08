@@ -101,6 +101,7 @@ class Builds(object):
 
         tput = 0
         for build in builds:
+            upload_size_mb = 'nan'
             name = build['metadata']['name']
             completionTimestamp = build['status']['completionTimestamp']
             completion = rfc3339_time(completionTimestamp)
@@ -122,7 +123,7 @@ class Builds(object):
             pending = start - creation
             if pending < 0:
                 which = 'archived'
-                pending = upload_size_mb = 'nan'
+                pending = 'nan'
             else:
                 which = 'current'
 

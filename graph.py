@@ -172,7 +172,7 @@ class BuildTree(object):
             when = build['status']['startTimestamp']
             duration = int(build['status']['duration']) / (10**9)
             (upload_size, layer_size) = self._get_upload_size(build)
-        except KeyError:
+        except (KeyError, IndexError):
             return
 
         repos = set([strip_registry_from_image(repo)

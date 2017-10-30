@@ -34,6 +34,7 @@ class BuildTree(object):
         self.tags_aliases = {}
         builds = [build for build in builds
                   if ('status' in build and
+                      build['status'].get('phase') == 'Complete' and
                       'startTimestamp' in build['status'])]
         builds.sort(key=lambda x: x['status']['startTimestamp'],
                     reverse=True)

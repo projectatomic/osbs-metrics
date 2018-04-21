@@ -93,6 +93,14 @@ class Build(object):
             return {}
 
     @property
+    def filesystem(self):
+        try:
+            return json.loads(self._data['metadata']['annotations']['filesystem'])
+        except Exception as e:
+            logger.warn('Error filesystem: %r', e)
+            return {}
+
+    @property
     def created_time(self):
         try:
             timestamp = self._data['metadata']['creationTimestamp']
@@ -133,6 +141,8 @@ class Build(object):
             for k, v in self.durations.iteritems():
                 zabbix_result[k] = v
             zabbix_result['upload_size_mb'] = self.upload_size_mb
+            for fs_key, v in self.filesystem.items():
+                zabbix_result['fs_' + fs_key] = v
             try:
                 if 'pulp_push' in zabbix_result.keys():
                     zabbix_result['pulp_push_speed'] =\
